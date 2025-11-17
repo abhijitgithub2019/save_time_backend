@@ -34,7 +34,7 @@ function saveDB(db) {
 // IMPORTANT: set this in Razorpay Dashboard → Webhooks
 // URL: https://your-server.com/api/razorpay/webhook
 // SECRET: set your own secret here
-const RAZORPAY_SECRET = "your_webhook_secret_here"; // CHANGE THIS!
+const RAZORPAY_SECRET = "abhiAmazon@26"; // CHANGE THIS!
 
 app.post("/api/razorpay/webhook", (req, res) => {
   const receivedSignature = req.headers["x-razorpay-signature"];
