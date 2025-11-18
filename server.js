@@ -49,17 +49,21 @@ app.post(
     const body = JSON.parse(req.body); // now safely parse
 
     // Only capture successful payments
-    if (body.event === "payment.captured") {
-      const payment = body.payload.payment.entity;
+    // Handle Razorpay Payment Link success
+    if (body.event === "payment_link.paid") {
+      console.log("✔️ Payment Link Paid Event");
 
-      const email = payment.email || payment.contact;
+      const paymentLink = body.payload.payment_link.entity;
+
+      const email =
+        paymentLink.customer?.email || paymentLink.customer?.contact || null;
 
       if (email) {
         const cleanedEmail = email.toLowerCase().trim();
         paidEmails.add(cleanedEmail);
         console.log("✔️ Payment recorded for:", cleanedEmail);
       } else {
-        console.log("⚠️ No email found in payment");
+        console.log("⚠️ No email found in payment_link.paid event");
       }
     }
 
