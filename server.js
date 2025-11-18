@@ -8,8 +8,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Store successful payment emails in memory
-// (works for Render, stays alive as long as instance is active)
+// Store successful payment emails
 const paidEmails = new Set();
 
 // Parse normal JSON requests
@@ -18,26 +17,27 @@ app.use(cors());
 
 // Root check
 app.get("/", (req, res) => {
-  res.send("Backend is running");
+  res.send("Backend is running ✔️");
 });
 
-// -----------------------------
-// RAW BODY PARSER FOR WEBHOOKS
-// -----------------------------
+// ------------------------------------------------------
+// RAW BODY PARSER FOR WEBHOOKS (REQUIRED FOR SIGNATURE)
+// ------------------------------------------------------
 app.post(
   "/api/razorpay/webhook",
   express.raw({ type: "application/json" }),
   (req, res) => {
-    const razorpaySecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     const receivedSignature = req.headers["x-razorpay-signature"];
+    const eventName = req.headers["x-razorpay-event"];
 
+    console.log("🔔 Webhook Received:", eventName);
+
+    // Validate signature
     const expectedSignature = crypto
-      .createHmac("sha256", razorpaySecret)
-      .update(req.body) // raw body
+      .createHmac("sha256", secret)
+      .update(req.body)
       .digest("hex");
-
-    console.log("Webhook Received...");
-    console.log("Event:", req.headers["x-razorpay-event"]);
 
     if (receivedSignature !== expectedSignature) {
       console.log("❌ Signature mismatch");
@@ -46,24 +46,54 @@ app.post(
 
     console.log("✔️ Signature Verified");
 
-    const body = JSON.parse(req.body); // now safely parse
+    // Parse raw body into JSON
+    let body = {};
+    try {
+      body = JSON.parse(req.body);
+    } catch (e) {
+      console.log("❌ Failed to parse webhook JSON");
+      return res.status(400).json({ error: "Invalid JSON" });
+    }
 
-    // Only capture successful payments
-    // Handle Razorpay Payment Link success
+    console.log("📩 FULL WEBHOOK BODY:", JSON.stringify(body, null, 2));
+
+    // ----------------------------------------------------
+    // Payment Link SUCCESS
+    // ----------------------------------------------------
     if (body.event === "payment_link.paid") {
-      console.log("✔️ Payment Link Paid Event");
+      console.log("🎉 Event: payment_link.paid");
 
-      const paymentLink = body.payload.payment_link.entity;
+      const customer =
+        body.payload.payment_link?.entity?.customer || null;
 
-      const email =
-        paymentLink.customer?.email || paymentLink.customer?.contact || null;
+      const email = customer?.email || customer?.contact || null;
 
       if (email) {
-        const cleanedEmail = email.toLowerCase().trim();
-        paidEmails.add(cleanedEmail);
-        console.log("✔️ Payment recorded for:", cleanedEmail);
+        const cleaned = email.toLowerCase().trim();
+        paidEmails.add(cleaned);
+        console.log("✔️ Payment recorded for:", cleaned);
       } else {
-        console.log("⚠️ No email found in payment_link.paid event");
+        console.log("⚠️ No email found in payment_link.paid");
+      }
+    }
+
+    // ----------------------------------------------------
+    // Payment Link PARTIALLY PAID (optional)
+    // ----------------------------------------------------
+    if (body.event === "payment_link.partially_paid") {
+      console.log("🎉 Event: payment_link.partially_paid");
+
+      const customer =
+        body.payload.payment_link?.entity?.customer || null;
+
+      const email = customer?.email || customer?.contact || null;
+
+      if (email) {
+        const cleaned = email.toLowerCase().trim();
+        paidEmails.add(cleaned);
+        console.log("✔️ Partial payment recorded for:", cleaned);
+      } else {
+        console.log("⚠️ No email found in payment_link.partially_paid");
       }
     }
 
@@ -71,15 +101,13 @@ app.post(
   }
 );
 
-// -----------------------------
+// ------------------------------------------------------
 // CHECK PAYMENT STATUS
-// -----------------------------
+// ------------------------------------------------------
 app.get("/api/check-payment-status", (req, res) => {
   const email = req.query.email?.toLowerCase().trim();
 
-  if (!email) {
-    return res.json({ status: "missing_email" });
-  }
+  if (!email) return res.json({ status: "missing_email" });
 
   if (paidEmails.has(email)) {
     return res.json({ status: "paid" });
@@ -88,7 +116,7 @@ app.get("/api/check-payment-status", (req, res) => {
   return res.json({ status: "pending" });
 });
 
-// -----------------------------
+// ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
 });
