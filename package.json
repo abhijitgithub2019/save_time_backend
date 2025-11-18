@@ -2,9 +2,9 @@
   "name": "premium-backend",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -13,8 +13,9 @@
   "dependencies": {
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
-    "crypto": "^1.0.1",
+    "dotenv": "^16.4.1",
     "express": "^5.1.0",
-    "lowdb": "^7.0.1"
+    "lowdb": "^7.0.1",
+    "razorpay": "^2.8.5"
   }
 }
