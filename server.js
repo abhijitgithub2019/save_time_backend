@@ -177,7 +177,7 @@ const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI; 
 
 // Middleware to parse incoming JSON data (for the new API endpoint)
-app.use(express.json()); // <--- IMPORTANT: Needed to read POST body for link creation
+app.use(express.json()); 
 
 // ------------------------------------------------------
 // Razorpay Client Setup
@@ -226,10 +226,11 @@ app.post("/api/create-payment-link", async (req, res) => {
         return res.status(400).json({ error: "Missing amount or email in request." });
     }
 
-    // Set expiration time (optional, 15 minutes in seconds)
+    // ✅ CRITICAL FIX: Setting expiration time to 25 minutes (1500 seconds) 
+    // This is well above the 15-minute minimum, preventing clock drift errors from Razorpay.
     const expireInSeconds = 25 * 60; // 25 minutes
     const expireTime = Math.floor(Date.now() / 1000) + expireInSeconds; 
-    
+
     // LOG: Add a log to see the calculated timestamp in the Render logs
     console.log(`[Link Creation] Calculated Expire Time (UNIX): ${expireTime} (${expireInSeconds} seconds from now)`);
 
@@ -249,7 +250,8 @@ app.post("/api/create-payment-link", async (req, res) => {
         },
         // We set mandatory email globally in Razorpay settings, but explicitly requiring it here is good practice
         reminder_enable: true, 
-        callback_url: "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html", // Replace with your actual success URL
+        // 🚨 CRITICAL EXTENSION FIX: Using the chrome-extension:// URL for the callback
+        callback_url: "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html", 
         callback_method: "get"
     };
 
@@ -264,6 +266,7 @@ app.post("/api/create-payment-link", async (req, res) => {
             link_id: link.id
         });
     } catch (error) {
+        // IMPORTANT: We now correctly log the detailed error and send a generic 500 error to the client
         console.error("❌ Error creating Razorpay link:", error);
         res.status(500).json({ error: "Failed to create payment link." });
     }
@@ -272,7 +275,7 @@ app.post("/api/create-payment-link", async (req, res) => {
 
 
 // ------------------------------------------------------
-// 🚨 WEBHOOK HANDLER (No changes below, logic remains correct)
+// 🚨 WEBHOOK HANDLER
 // ------------------------------------------------------
 app.post(
   "/api/razorpay/webhook",
@@ -282,9 +285,13 @@ app.post(
     const receivedSignature = req.headers["x-razorpay-signature"];
 
     // 1. Signature Validation
+    // 💥 FIX: Explicitly convert req.body (which is a Buffer from express.raw) to a string 
+    // before feeding it to the HMAC update, preventing the TypeError.
+    const bodyToString = req.body.toString('utf8');
+    
     const expectedSignature = crypto
       .createHmac("sha256", secret)
-      .update(req.body)
+      .update(bodyToString)
       .digest("hex");
 
     if (receivedSignature !== expectedSignature) {
@@ -297,7 +304,8 @@ app.post(
     // 2. Parse raw body into JSON ONLY AFTER validation
     let body = {};
     try {
-      body = JSON.parse(req.body.toString()); 
+      // Use the converted string to parse the JSON
+      body = JSON.parse(bodyToString); 
     } catch (e) {
       console.error("❌ Failed to parse webhook JSON:", e);
       return res.status(400).json({ error: "Invalid JSON" });
