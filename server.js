@@ -285,17 +285,16 @@ app.post(
     const receivedSignature = req.headers["x-razorpay-signature"];
 
     // 1. Signature Validation
-    // 💥 FIX: Explicitly convert req.body (which is a Buffer from express.raw) to a string 
-    // before feeding it to the HMAC update, preventing the TypeError.
-    const bodyToString = req.body.toString('utf8');
-    
+    // ✅ REVERTED FIX: Using the raw Buffer (req.body) directly for signature verification, 
+    // which the user confirmed previously worked in their setup.
     const expectedSignature = crypto
       .createHmac("sha256", secret)
-      .update(bodyToString)
+      .update(req.body) 
       .digest("hex");
 
     if (receivedSignature !== expectedSignature) {
       console.log("❌ Signature mismatch");
+      // *** IMPORTANT: If this mismatch persists, the secret in Render and Razorpay do not match. ***
       return res.status(400).json({ error: "Invalid signature" });
     }
 
@@ -304,8 +303,8 @@ app.post(
     // 2. Parse raw body into JSON ONLY AFTER validation
     let body = {};
     try {
-      // Use the converted string to parse the JSON
-      body = JSON.parse(bodyToString); 
+      // Convert the raw Buffer to a string for JSON parsing
+      body = JSON.parse(req.body.toString()); 
     } catch (e) {
       console.error("❌ Failed to parse webhook JSON:", e);
       return res.status(400).json({ error: "Invalid JSON" });
