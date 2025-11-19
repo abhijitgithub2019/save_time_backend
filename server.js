@@ -227,7 +227,11 @@ app.post("/api/create-payment-link", async (req, res) => {
     }
 
     // Set expiration time (optional, 15 minutes in seconds)
-    const expireTime = Math.floor(Date.now() / 1000) + (15 * 60); 
+    const expireInSeconds = 25 * 60; // 25 minutes
+    const expireTime = Math.floor(Date.now() / 1000) + expireInSeconds; 
+    
+    // LOG: Add a log to see the calculated timestamp in the Render logs
+    console.log(`[Link Creation] Calculated Expire Time (UNIX): ${expireTime} (${expireInSeconds} seconds from now)`);
 
     const paymentLinkData = {
         amount: amountInPaise,
@@ -245,7 +249,7 @@ app.post("/api/create-payment-link", async (req, res) => {
         },
         // We set mandatory email globally in Razorpay settings, but explicitly requiring it here is good practice
         reminder_enable: true, 
-        callback_url: "https://your-frontend-success-page.com/payment-success", // Replace with your actual success URL
+        callback_url: "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html", // Replace with your actual success URL
         callback_method: "get"
     };
 
