@@ -176,8 +176,10 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI; 
 
-// Middleware to parse incoming JSON data (for the new API endpoint)
-app.use(express.json()); 
+// 🚨 CRITICAL FIX: We are REMOVING the global app.use(express.json()) 
+// to prevent it from running before the webhook's express.raw(). 
+// express.json() will now be applied only to the /api/create-payment-link route.
+
 
 // ------------------------------------------------------
 // Razorpay Client Setup
@@ -215,7 +217,10 @@ app.get("/", (req, res) => {
 // ------------------------------------------------------
 // ⚡ NEW API ENDPOINT: PROGRAMMATICALLY CREATE PAYMENT LINK
 // ------------------------------------------------------
-app.post("/api/create-payment-link", async (req, res) => {
+app.post(
+  "/api/create-payment-link", 
+  express.json(), // 🔥 FIX: Applying JSON parser only to this route
+  async (req, res) => {
     // You can send these values from your frontend
     const { amount, email } = req.body; 
     
@@ -270,7 +275,8 @@ app.post("/api/create-payment-link", async (req, res) => {
         console.error("❌ Error creating Razorpay link:", error);
         res.status(500).json({ error: "Failed to create payment link." });
     }
-});
+  }
+);
 // ------------------------------------------------------
 
 
@@ -285,8 +291,8 @@ app.post(
     const receivedSignature = req.headers["x-razorpay-signature"];
 
     // 1. Signature Validation
-    // ✅ REVERTED FIX: Using the raw Buffer (req.body) directly for signature verification, 
-    // which the user confirmed previously worked in their setup.
+    // ✅ This line requires req.body to be a Buffer, which is now guaranteed because 
+    // the global JSON parser has been removed.
     const expectedSignature = crypto
       .createHmac("sha256", secret)
       .update(req.body) 
@@ -294,7 +300,6 @@ app.post(
 
     if (receivedSignature !== expectedSignature) {
       console.log("❌ Signature mismatch");
-      // *** IMPORTANT: If this mismatch persists, the secret in Render and Razorpay do not match. ***
       return res.status(400).json({ error: "Invalid signature" });
     }
 
