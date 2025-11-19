@@ -1,137 +1,15 @@
-// import express from "express";
-// import crypto from "crypto";
-// import cors from "cors";
-// import dotenv from "dotenv";
-
-// dotenv.config();
-
-// const app = express();
-// const PORT = process.env.PORT || 5000;
-
-// // Store successful payment emails
-// const paidEmails = new Set();
-
-// // Parse normal JSON requests
-// app.use(express.json());
-// app.use(cors());
-
-// // Root check
-// app.get("/", (req, res) => {
-//   res.send("Backend is running ✔️");
-// });
-
-// // ------------------------------------------------------
-// // RAW BODY PARSER FOR WEBHOOKS (REQUIRED FOR SIGNATURE)
-// // ------------------------------------------------------
-// app.post(
-//   "/api/razorpay/webhook",
-//   express.raw({ type: "application/json" }),
-//   (req, res) => {
-//     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-//     const receivedSignature = req.headers["x-razorpay-signature"];
-//     const eventName = req.headers["x-razorpay-event"];
-
-//     console.log("🔔 Webhook Received:", eventName);
-
-//     // Validate signature
-//     const expectedSignature = crypto
-//       .createHmac("sha256", secret)
-//       .update(req.body)
-//       .digest("hex");
-
-//     if (receivedSignature !== expectedSignature) {
-//       console.log("❌ Signature mismatch");
-//       return res.status(400).json({ error: "Invalid signature" });
-//     }
-
-//     console.log("✔️ Signature Verified");
-
-//     // Parse raw body into JSON
-//     let body = {};
-//     try {
-//       body = JSON.parse(req.body);
-//     } catch (e) {
-//       console.log("❌ Failed to parse webhook JSON");
-//       return res.status(400).json({ error: "Invalid JSON" });
-//     }
-
-//     console.log("📩 FULL WEBHOOK BODY:", JSON.stringify(body, null, 2));
-
-//     // ----------------------------------------------------
-//     // Payment Link SUCCESS
-//     // ----------------------------------------------------
-//     if (body.event === "payment_link.paid") {
-//       console.log("🎉 Event: payment_link.paid");
-
-//       const customer =
-//         body.payload.payment_link?.entity?.customer || null;
-
-//       const email = customer?.email || customer?.contact || null;
-
-//       if (email) {
-//         const cleaned = email.toLowerCase().trim();
-//         paidEmails.add(cleaned);
-//         console.log("✔️ Payment recorded for:", cleaned);
-//       } else {
-//         console.log("⚠️ No email found in payment_link.paid");
-//       }
-//     }
-
-//     // ----------------------------------------------------
-//     // Payment Link PARTIALLY PAID (optional)
-//     // ----------------------------------------------------
-//     if (body.event === "payment_link.partially_paid") {
-//       console.log("🎉 Event: payment_link.partially_paid");
-
-//       const customer =
-//         body.payload.payment_link?.entity?.customer || null;
-
-//       const email = customer?.email || customer?.contact || null;
-
-//       if (email) {
-//         const cleaned = email.toLowerCase().trim();
-//         paidEmails.add(cleaned);
-//         console.log("✔️ Partial payment recorded for:", cleaned);
-//       } else {
-//         console.log("⚠️ No email found in payment_link.partially_paid");
-//       }
-//     }
-
-//     return res.json({ status: "ok" });
-//   }
-// );
-
-// // ------------------------------------------------------
-// // CHECK PAYMENT STATUS
-// // ------------------------------------------------------
-// app.get("/api/check-payment-status", (req, res) => {
-//   const email = req.query.email?.toLowerCase().trim();
-
-//   if (!email) return res.json({ status: "missing_email" });
-
-//   if (paidEmails.has(email)) {
-//     return res.json({ status: "paid" });
-//   }
-
-//   return res.json({ status: "pending" });
-// });
-
-// // ------------------------------------------------------
-// app.listen(PORT, () => {
-//   console.log(`🚀 Backend running on http://localhost:${PORT}`);
-// });
-
 import express from "express";
 import crypto from "crypto";
 import cors from "cors";
 import dotenv from "dotenv";
-import mongoose from "mongoose"; // <-- NEW
+import mongoose from "mongoose";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI; // Must be set on Render
+const MONGO_URI = process.env.MONGO_URI; 
+// const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET; // This is accessed later
 
 // ------------------------------------------------------
 // MongoDB Setup (Persistence Layer)
@@ -149,30 +27,30 @@ const PaidUserSchema = new mongoose.Schema({
 const PaidUser = mongoose.model("PaidUser", PaidUserSchema);
 // ------------------------------------------------------
 
-// Parse normal JSON requests
-app.use(express.json());
+// ⚠️ ONLY Global Middleware: CORS
 app.use(cors());
 
+// Root check
 app.get("/", (req, res) => {
   res.send("Backend is running ✔️");
 });
 
 // ------------------------------------------------------
-// WEBHOOK HANDLER: SAVES TO DATABASE
+// 🚨 WEBHOOK HANDLER: RAW BODY PARSER & SIGNATURE FIX
 // ------------------------------------------------------
+// NOTE: We MUST NOT use app.use(express.json()) globally or before this route,
+// as it would break signature validation. We use express.raw() only here.
 app.post(
   "/api/razorpay/webhook",
-  express.raw({ type: "application/json" }),
+  express.raw({ type: "application/json" }), // <--- Uses raw body for validation
   async (req, res) => {
-    // ADD ASYNC
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     const receivedSignature = req.headers["x-razorpay-signature"];
-    console.log(secret, receivedSignature);
 
-    // Signature Validation (remains the same)
+    // 1. Signature Validation: Must use the raw body (Buffer)
     const expectedSignature = crypto
       .createHmac("sha256", secret)
-      .update(req.body)
+      .update(req.body) // req.body is the raw Buffer here
       .digest("hex");
 
     if (receivedSignature !== expectedSignature) {
@@ -180,17 +58,20 @@ app.post(
       return res.status(400).json({ error: "Invalid signature" });
     }
 
+    console.log("✔️ Signature Verified.");
+
+    // 2. Parse raw body into JSON ONLY AFTER validation
     let body = {};
     try {
-      body = JSON.parse(req.body);
+      body = JSON.parse(req.body); // Parses the raw Buffer content into an object
     } catch (e) {
       console.error("❌ Failed to parse webhook JSON:", e);
       return res.status(400).json({ error: "Invalid JSON" });
     }
 
-    console.log("✔️ Signature Verified. Event:", body.event);
+    console.log("📩 Event:", body.event);
 
-    // Update DB on payment success
+    // 3. Update DB on payment success
     if (body.event === "payment_link.paid") {
       const email = body.payload.payment_link?.entity?.customer?.email || null;
 
@@ -202,16 +83,18 @@ app.post(
           await PaidUser.findOneAndUpdate(
             { email: cleanedEmail },
             { $set: { paidAt: Date.now() } },
-            { upsert: true, new: true }
+            { upsert: true, new: true } // Find & update, or insert if not found
           );
           console.log("✔️ Payment recorded in DB for:", cleanedEmail);
         } catch (dbError) {
           console.error("❌ DB Save Error:", dbError);
+          // Return 500 but still send status: "ok" to Razorpay? No, error out to debug
           return res.status(500).json({ error: "DB Error" });
         }
       }
     }
 
+    // Acknowledge the webhook successfully
     return res.json({ status: "ok" });
   }
 );
@@ -219,8 +102,8 @@ app.post(
 // ------------------------------------------------------
 // STATUS CHECK: READS FROM DATABASE
 // ------------------------------------------------------
+// NOTE: We don't need express.json() for this GET request.
 app.get("/api/check-payment-status", async (req, res) => {
-  // ADD ASYNC
   const email = req.query.email?.toLowerCase().trim();
 
   if (!email) return res.json({ status: "missing_email" });
@@ -229,7 +112,7 @@ app.get("/api/check-payment-status", async (req, res) => {
   const user = await PaidUser.findOne({ email: email });
 
   if (user) {
-    return res.json({ status: "paid" }); // Success! This is what your frontend polls for
+    return res.json({ status: "paid" }); // Success!
   }
 
   return res.json({ status: "pending" });
