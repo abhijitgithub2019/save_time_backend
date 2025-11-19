@@ -17,6 +17,6 @@
     "express": "^5.1.0",
     "lowdb": "^7.0.1",
     "mongoose": "^8.20.0",
-    "razorpay": "^2.8.5"
+    "razorpay": "^2.9.6"
   }
 }
