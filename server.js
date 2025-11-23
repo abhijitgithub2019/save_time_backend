@@ -279,6 +279,66 @@ app.post(
 );
 // ------------------------------------------------------
 
+app.post(
+  "/api/create-emergency-payment-link", 
+  express.json(), // 🔥 FIX: Applying JSON parser only to this route
+  async (req, res) => {
+    // You can send these values from your frontend
+    const { amount, email } = req.body; 
+    
+    // Convert amount from Rupee (e.g., 100) to Paisa (e.g., 10000)
+    const amountInPaise = Math.round(amount * 100); 
+
+    if (!amount || !email) {
+        return res.status(400).json({ error: "Missing amount or email in request." });
+    }
+
+    // ✅ CRITICAL FIX: Setting expiration time to 25 minutes (1500 seconds) 
+    // This is well above the 15-minute minimum, preventing clock drift errors from Razorpay.
+    const expireInSeconds = 25 * 60; // 25 minutes
+    const expireTime = Math.floor(Date.now() / 1000) + expireInSeconds; 
+
+    // LOG: Add a log to see the calculated timestamp in the Render logs
+    console.log(`[Link Creation] Calculated Expire Time (UNIX): ${expireTime} (${expireInSeconds} seconds from now)`);
+
+    const paymentLinkData = {
+        amount: amountInPaise,
+        currency: "INR",
+        expire_by: expireTime,
+        reference_id: `REF_${Date.now()}`, // Unique reference ID for tracking
+        description: "Emergency unlock fetaures",
+        customer: {
+            email: email,
+            // You can add contact here if you collect it on the frontend
+        },
+        notify: {
+            email: true, // Notify customer via email
+            sms: false,
+        },
+        // We set mandatory email globally in Razorpay settings, but explicitly requiring it here is good practice
+        reminder_enable: true, 
+        // 🚨 CRITICAL EXTENSION FIX: Using the chrome-extension:// URL for the callback
+        callback_url: "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html", 
+        callback_method: "get"
+    };
+
+    try {
+        const link = await razorpay.paymentLink.create(paymentLinkData);
+        
+        console.log(`✔️ New Emergency Payment Link Created: ${link.short_url}`);
+
+        // Send the short URL back to the frontend for redirection
+        res.status(200).json({ 
+            link_url: link.short_url,
+            link_id: link.id
+        });
+    } catch (error) {
+        // IMPORTANT: We now correctly log the detailed error and send a generic 500 error to the client
+        console.error("❌ Error creating Razorpay link for Emergency Lock:", error);
+        res.status(500).json({ error: "Failed to create payment link for Emergency Lock." });
+    }
+  }
+);
 
 // ------------------------------------------------------
 // 🚨 WEBHOOK HANDLER
