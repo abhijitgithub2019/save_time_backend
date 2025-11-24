@@ -36,10 +36,20 @@ mongoose
 const PaidUserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, index: true },
   paidAt: { type: Date, default: Date.now },
+  expiresAt: { type: Date }, // ⭐ NEW
   amount: { type: Number, required: true },
 });
+
 const PaidUser = mongoose.model("PaidUser", PaidUserSchema);
 // ------------------------------------------------------
+
+const EmergencySchema = new mongoose.Schema({
+  email: String,
+  amount: Number,
+  paidAt: { type: Date, default: Date.now },
+});
+
+const EmergencyUnlock = mongoose.model("EmergencyUnlock", EmergencySchema);
 
 // ⚠️ ONLY Global Middleware: CORS
 app.use(cors());
@@ -277,14 +287,39 @@ app.post(
         const cleanedEmail = email.toLowerCase().trim();
 
         try {
-          await PaidUser.findOneAndUpdate(
-            { email: cleanedEmail },
-            { $set: { paidAt: Date.now(), amount: amount } },
-            { upsert: true, new: true }
-          );
-          console.log(
-            `✔️ Payment recorded in DB for: ${cleanedEmail} with amount: ${amount} paise`
-          );
+          if (amount === 9900) {
+            const now = new Date();
+            const expireDate = new Date(
+              now.getTime() + 30 * 24 * 60 * 60 * 1000
+            ); // +30 days
+
+            await PaidUser.findOneAndUpdate(
+              { email: cleanedEmail },
+              {
+                $set: {
+                  paidAt: now,
+                  expiresAt: expireDate, // ⭐ NEW FIELD
+                  amount: amount,
+                },
+              },
+              { upsert: true, new: true }
+            );
+            console.log(`✔️ Premium payment saved for: ${cleanedEmail}`);
+          }
+
+          // ⭐ If EMERGENCY UNLOCK (₹49 → 4900 paise)
+          else if (amount === 4900) {
+            await EmergencyUnlock.create({
+              email: cleanedEmail,
+              amount: 4900,
+              paidAt: new Date(),
+              razorpay_payment_id: body.payload.payment?.entity?.id || null,
+              razorpay_link_id: body.payload.payment_link?.entity?.id || null,
+              used: false,
+              expiresAt: new Date(Date.now() + 2 * 60 * 1000), // expires in 10 minutes
+            });
+            console.log(`✔️ Emergency Unlock saved for: ${cleanedEmail}`);
+          }
         } catch (dbError) {
           console.error("❌ DB Save Error:", dbError);
           return res.status(500).json({ error: "DB Error" });
@@ -309,14 +344,18 @@ app.get("/api/check-payment-status", async (req, res) => {
 
   if (!email) return res.json({ status: "missing_email" });
 
-  // *** QUERY DATABASE ***
-  const user = await PaidUser.findOne({ email: email });
+  const user = await PaidUser.findOne({ email });
 
-  if (user) {
-    return res.json({ status: "paid", amount: user.amount });
+  if (!user) {
+    return res.json({ status: "pending" });
   }
 
-  return res.json({ status: "pending" });
+  // ⭐ Check expiration
+  if (user.expiresAt && user.expiresAt < Date.now()) {
+    return res.json({ status: "expired" });
+  }
+
+  return res.json({ status: "paid", expiresAt: user.expiresAt });
 });
 
 app.get("/health", (req, res) => {
