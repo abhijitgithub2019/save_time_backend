@@ -312,11 +312,10 @@ app.post(
             await EmergencyUnlock.create({
               email: cleanedEmail,
               amount: 4900,
-              paidAt: new Date(),
+              status: "paid",
+              used: false,
               razorpay_payment_id: body.payload.payment?.entity?.id || null,
               razorpay_link_id: body.payload.payment_link?.entity?.id || null,
-              used: false,
-              expiresAt: new Date(Date.now() + 2 * 60 * 1000), // expires in 10 minutes
             });
             console.log(`✔️ Emergency Unlock saved for: ${cleanedEmail}`);
           }
@@ -411,7 +410,10 @@ app.get("/api/delete-emergency-payment", async (req, res) => {
 
   try {
     // Only delete emergency unlock payments (4900 paise)
-    const result = await PaidUser.deleteOne({ email: email, amount: 4900 });
+    const result = await EmergencyUnlock.deleteOne({
+      email: email,
+      amount: 4900,
+    });
 
     if (result.deletedCount > 0) {
       console.log(`🗑️ Emergency Unlock record deleted for ${email}`);
