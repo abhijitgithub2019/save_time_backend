@@ -366,20 +366,14 @@ app.get("/api/check-emergency-status", async (req, res) => {
 
   if (!email) return res.json({ status: "missing_email" });
 
-  // Look up user payment record
-  const user = await PaidUser.findOne({ email: email });
+  // Look up user emergency unlock record
+  const record = await EmergencyUnlock.findOne({ email });
 
-  if (!user) {
+  if (!record) {
     return res.json({ status: "pending" });
   }
 
-  // amount saved is in PAISA (49 rupees = 4900 paise)
-  if (user.amount === 4900) {
-    return res.json({ status: "paid", amount: user.amount });
-  }
-
-  // If the saved amount is not ₹49, then this record is for full premium
-  return res.json({ status: "not_emergency" });
+  return res.json({ status: "paid", amount: record.amount });
 });
 
 app.get("/api/country", (req, res) => {
