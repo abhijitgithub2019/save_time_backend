@@ -492,6 +492,30 @@ app.get("/api/country", async (req, res) => {
   }
 });
 
+
+app.get("/api/delete-emergency-payment", async (req, res) => {
+  const email = req.query.email?.toLowerCase().trim();
+
+  if (!email) {
+    return res.status(400).json({ error: "Missing email" });
+  }
+
+  try {
+    // Only delete emergency unlock payments (4900 paise)
+    const result = await PaidUser.deleteOne({ email: email, amount: 4900 });
+
+    if (result.deletedCount > 0) {
+      console.log(`🗑️ Emergency Unlock record deleted for ${email}`);
+      return res.json({ status: "deleted" });
+    }
+
+    return res.json({ status: "not_found" });
+  } catch (err) {
+    console.error("❌ Error deleting emergency record:", err);
+    return res.status(500).json({ error: "Database delete error" });
+  }
+});
+
 // ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
