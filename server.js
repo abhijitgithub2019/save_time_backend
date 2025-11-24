@@ -455,6 +455,10 @@ app.get("/api/check-payment-status", async (req, res) => {
   return res.json({ status: "pending" });
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 // ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
