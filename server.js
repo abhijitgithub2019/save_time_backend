@@ -481,6 +481,16 @@ app.get("/api/check-emergency-status", async (req, res) => {
   return res.json({ status: "not_emergency" });
 });
 
+app.get("/api/country", async (req, res) => {
+  try {
+    const response = await fetch("https://ipapi.co/json/");
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Country API Error:", err);
+    res.status(500).json({ error: "Failed to detect country" });
+  }
+});
 
 // ------------------------------------------------------
 app.listen(PORT, () => {
