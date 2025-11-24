@@ -512,7 +512,7 @@ app.get("/api/country", async (req, res) => {
   try {
     const response = await fetch("https://ipapi.co/json/");
 
-    const text = await response.text(); // Read raw text first
+    const text = await response.text();  // Read raw text first
 
     let data;
     try {
@@ -524,6 +524,7 @@ app.get("/api/country", async (req, res) => {
     }
 
     return res.json(data);
+
   } catch (err) {
     console.error("Country API Error:", err);
     return res.json({ error: "network_error", country_code: "IN" });
