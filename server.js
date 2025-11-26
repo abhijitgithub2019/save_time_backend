@@ -444,19 +444,25 @@ app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
 
-  // IP
+  // -------------------------
+  // ⭐ IP Address
+  // -------------------------
   const ip =
     req.headers["x-forwarded-for"]?.split(",")[0] ||
     req.socket.remoteAddress ||
     "Unknown";
 
-  // Location
-  const location = geoip.lookup(ip);
-  const country = location?.country || "Unknown";
-  const city = location?.city || "Unknown";
+  // -------------------------
+  // ⭐ Location (geoip)
+  // -------------------------
+  const location = geoip.lookup(ip) || {};
+  const country = location.country || "Unknown";
+  const city = location.city || "Unknown";
 
-  // Device Info
-  const ua = req.headers["user-agent"] || "Unknown Device";
+  // -------------------------
+  // ⭐ Device Info
+  // -------------------------
+  const userAgent = req.headers["user-agent"] || "Unknown Device";
 
   const parseDevice = (ua) => {
     let browser = "Unknown";
@@ -476,59 +482,78 @@ app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
     return { browser, os };
   };
 
-  const device = parseDevice(ua);
+  const deviceInfo = parseDevice(userAgent);
 
+  // -------------------------
+  // ⭐ Ready HTML Template
+  // -------------------------
+  const emailHtml = `
+    <div style="font-family:Arial, sans-serif; padding:20px; background:#f7f7f7;">
+      <div style="max-width:600px; margin:0 auto; background:#ffffff; padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+
+        <h2 style="color:#333; margin-top:0;">📩 New User Feedback</h2>
+
+        <p style="font-size:16px; margin:10px 0;">
+          ⭐ <strong style="color:#FFD700; font-size:18px;">
+            ${"★".repeat(rating)}${"☆".repeat(5 - rating)}
+          </strong>
+        </p>
+
+        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+        <p><strong>Type:</strong> ${type}</p>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+
+        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+        <p><strong>Message:</strong></p>
+        <p style="background:#fafafa; padding:12px; border-radius:8px; white-space:pre-wrap;">
+          ${message}
+        </p>
+
+        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+        <h3 style="margin-bottom:8px;">📍 User Info</h3>
+        <p><strong>IP:</strong> ${ip}</p>
+        <p><strong>Country:</strong> ${country}</p>
+        <p><strong>City:</strong> ${city}</p>
+
+        <h3 style="margin-top:20px; margin-bottom:8px;">🖥 Device Info</h3>
+        <p><strong>Browser:</strong> ${deviceInfo.browser}</p>
+        <p><strong>OS:</strong> ${deviceInfo.os}</p>
+        <p><strong>User-Agent:</strong> ${userAgent}</p>
+
+        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+        <p style="font-size:12px; color:#777; text-align:center;">
+          Sent from <strong>BlockSocialMedia Chrome Extension</strong><br/>
+          © ${new Date().getFullYear()} Apatra. All Rights Reserved.
+        </p>
+
+      </div>
+    </div>
+  `;
+
+  // -------------------------
+  // ⭐ Send Email via Resend
+  // -------------------------
   try {
     await resend.emails.send({
-      from: "BlockSocialMedia <no-reply@resend.dev>",
+      from: "BlockSocialMedia <onboarding@resend.dev>", // ✔ works without domain
       to: process.env.FEEDBACK_EMAIL,
       subject: `New Feedback – ${rating} ★ – ${type}`,
-      html: `
-        <div style="font-family:Arial;padding:20px;background:#f7f7f7;">
-          <div style="max-width:600px;margin:0 auto;background:#fff;padding:20px;border-radius:10px;">
-
-            <h2>📩 New Feedback</h2>
-
-            <p><strong>Rating:</strong> ${"★".repeat(rating)}${"☆".repeat(
-        5 - rating
-      )}</p>
-            <p><strong>Type:</strong> ${type}</p>
-
-            <p><strong>Name:</strong> ${name}</p>
-            <p><strong>Email:</strong> ${email}</p>
-
-            <p><strong>Message:</strong><br/>
-              <div style="background:#fafafa;padding:10px;border-radius:8px;">
-                ${message}
-              </div>
-            </p>
-
-            <hr />
-            <h3>📍 User Info</h3>
-            <p><strong>IP:</strong> ${ip}</p>
-            <p><strong>City:</strong> ${city}</p>
-            <p><strong>Country:</strong> ${country}</p>
-
-            <h3>🖥 Device</h3>
-            <p><strong>Browser:</strong> ${device.browser}</p>
-            <p><strong>OS:</strong> ${device.os}</p>
-            <p><strong>User-Agent:</strong> ${ua}</p>
-
-            <hr />
-            <small>© ${new Date().getFullYear()} Apatra</small>
-
-          </div>
-        </div>
-      `,
+      html: emailHtml,
     });
 
     console.log("📬 Feedback sent via Resend!");
     return res.json({ success: true });
-  } catch (error) {
-    console.error("❌ Resend Email Error:", error);
-    return res.status(500).json({ error: "Email sending failed" });
+  } catch (err) {
+    console.error("❌ Resend Email Error:", err);
+    return res.status(500).json({ error: "Email sending failed." });
   }
 });
+
 
 // ------------------------------------------------------
 app.listen(PORT, () => {
