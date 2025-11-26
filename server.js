@@ -5,7 +5,6 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import geoip from "geoip-lite";
-import { Resend } from "resend";
 import rateLimit from "express-rate-limit";
 
 
