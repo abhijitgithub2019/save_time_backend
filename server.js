@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import geoip from "geoip-lite";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -15,6 +16,14 @@ const MONGO_URI = process.env.MONGO_URI;
 // 🚨 CRITICAL FIX: We are REMOVING the global app.use(express.json())
 // to prevent it from running before the webhook's express.raw().
 // express.json() will now be applied only to the /api/create-payment-link route.
+
+const feedbackTransporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.FEEDBACK_EMAIL,
+    pass: process.env.FEEDBACK_EMAIL_PASS,
+  },
+});
 
 // ------------------------------------------------------
 // Razorpay Client Setup
@@ -418,6 +427,119 @@ app.get("/api/delete-emergency-payment", async (req, res) => {
   } catch (err) {
     console.error("❌ Error deleting emergency record:", err);
     return res.status(500).json({ error: "Database delete error" });
+  }
+});
+
+app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
+  const { rating, type, name, email, message } = req.body;
+
+  if (!rating || !type || !name || !email || !message) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  // -------------------------
+  // ⭐ 1. Get User IP Address
+  // -------------------------
+  const ip =
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.socket.remoteAddress ||
+    "Unknown";
+
+  // -------------------------
+  // ⭐ 2. Get Location (geoip)
+  // -------------------------
+  let location = geoip.lookup(ip);
+  let country = location?.country || "Unknown";
+  let city = location?.city || "Unknown";
+
+  // -------------------------
+  // ⭐ 3. Extract Device Info
+  // -------------------------
+  const userAgent = req.headers["user-agent"] || "Unknown Device";
+
+  // Optional: parse the OS & browser
+  const parseDevice = (ua) => {
+    let browser = "Unknown";
+    let os = "Unknown";
+
+    if (/chrome|crios/i.test(ua)) browser = "Chrome";
+    if (/firefox/i.test(ua)) browser = "Firefox";
+    if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = "Safari";
+    if (/edg/i.test(ua)) browser = "Edge";
+
+    if (/windows/i.test(ua)) os = "Windows";
+    if (/android/i.test(ua)) os = "Android";
+    if (/iphone|ipad|ios/i.test(ua)) os = "iOS";
+    if (/macintosh|mac os/i.test(ua)) os = "MacOS";
+    if (/linux/i.test(ua)) os = "Linux";
+
+    return { browser, os };
+  };
+
+  const deviceInfo = parseDevice(userAgent);
+
+  // -----------------------------------
+  // ⭐ 4. Build Clean HTML Feedback Email
+  // -----------------------------------
+  try {
+    await feedbackTransporter.sendMail({
+      from: `"BlockSocialMedia Feedback" <${process.env.FEEDBACK_EMAIL}>`,
+      to: process.env.FEEDBACK_EMAIL,
+      subject: `New Feedback – ${rating} ★ – ${type}`,
+      html: `
+        <div style="font-family:Arial, sans-serif; padding:20px; background:#f7f7f7;">
+          <div style="max-width:600px; margin:0 auto; background:#ffffff; padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+
+            <h2 style="color:#333; margin-top:0;">📩 New User Feedback</h2>
+
+            <p style="font-size:16px; margin:10px 0;">
+              ⭐ <strong style="color:#FFD700; font-size:18px;">
+                ${"★".repeat(rating)}${"☆".repeat(5 - rating)}
+              </strong>
+            </p>
+
+            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+            <p><strong>Type:</strong> ${type}</p>
+            <p><strong>Name:</strong> ${name}</p>
+            <p><strong>Email:</strong> ${email}</p>
+
+            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+            <p><strong>Message:</strong></p>
+            <p style="background:#fafafa; padding:12px; border-radius:8px; white-space:pre-wrap;">
+              ${message}
+            </p>
+
+            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+            <h3 style="margin-bottom:8px;">📍 User Info</h3>
+            <p><strong>IP Address:</strong> ${ip}</p>
+            <p><strong>Country:</strong> ${country}</p>
+            <p><strong>City:</strong> ${city}</p>
+
+            <h3 style="margin-top:20px; margin-bottom:8px;">🖥 Device Info</h3>
+            <p><strong>Browser:</strong> ${deviceInfo.browser}</p>
+            <p><strong>OS:</strong> ${deviceInfo.os}</p>
+            <p><strong>User-Agent:</strong> ${userAgent}</p>
+
+            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+            <p style="font-size:12px; color:#777; text-align:center;">
+              Sent automatically from <strong>BlockSocialMedia Chrome Extension</strong><br/>
+              © ${new Date().getFullYear()} Apatra. All Rights Reserved.
+            </p>
+
+          </div>
+        </div>
+      `,
+    });
+
+    console.log("📬 Feedback email sent successfully!");
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("❌ Error sending feedback email:", error);
+    return res.status(500).json({ error: "Email sending failed" });
   }
 });
 
