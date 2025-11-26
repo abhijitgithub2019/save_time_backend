@@ -14,6 +14,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
 
+app.set("trust proxy", 1); 
+
 // 🚨 CRITICAL FIX: We are REMOVING the global app.use(express.json())
 // to prevent it from running before the webhook's express.raw().
 // express.json() will now be applied only to the /api/create-payment-link route.
