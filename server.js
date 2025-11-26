@@ -8,9 +8,12 @@ import geoip from "geoip-lite";
 import { Resend } from "resend";
 import rateLimit from "express-rate-limit";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 dotenv.config();
+
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
