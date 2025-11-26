@@ -287,7 +287,7 @@ app.post(
         const cleanedEmail = email.toLowerCase().trim();
 
         try {
-          if (amount === 9900) {
+          if (amount === 7900) {
             const now = new Date();
             const expireDate = new Date(
               now.getTime() + 30 * 24 * 60 * 60 * 1000
