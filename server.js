@@ -20,7 +20,7 @@ const MONGO_URI = process.env.MONGO_URI;
 
 const feedbackLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3,
+  max: 20,
   message: { error: "Too many feedback submissions. Please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -32,7 +32,11 @@ const feedbackTransporter = nodemailer.createTransport({
     user: process.env.FEEDBACK_EMAIL,
     pass: process.env.FEEDBACK_EMAIL_PASS,
   },
+  tls: {
+    rejectUnauthorized: false,
+  }
 });
+
 
 // ------------------------------------------------------
 // Razorpay Client Setup
