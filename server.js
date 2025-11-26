@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import geoip from "geoip-lite";
 import nodemailer from "nodemailer";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
@@ -16,6 +17,14 @@ const MONGO_URI = process.env.MONGO_URI;
 // 🚨 CRITICAL FIX: We are REMOVING the global app.use(express.json())
 // to prevent it from running before the webhook's express.raw().
 // express.json() will now be applied only to the /api/create-payment-link route.
+
+const feedbackLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  message: { error: "Too many feedback submissions. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const feedbackTransporter = nodemailer.createTransport({
   service: "gmail",
