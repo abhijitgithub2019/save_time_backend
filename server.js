@@ -24,14 +24,12 @@ app.set("trust proxy", 1);
 // to prevent it from running before the webhook's express.raw().
 // express.json() will now be applied only to the /api/create-payment-link route.
 
-
 function createPaypalClient() {
-  return new paypal.core.PayPalHttpClient(
-    new paypal.core.LiveEnvironment(
-      process.env.PAYPAL_CLIENT_ID,
-      process.env.PAYPAL_SECRET
-    )
+  const environment = new paypal.core.SandboxEnvironment(
+    process.env.PAYPAL_CLIENT_ID,
+    process.env.PAYPAL_SECRET
   );
+  return new paypal.core.PayPalHttpClient(environment);
 }
 
 const feedbackLimiter = rateLimit({
@@ -564,44 +562,34 @@ app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
   }
 });
 
-
 app.post("/api/create-paypal-order", express.json(), async (req, res) => {
-  const { amount, email } = req.body;
-
-  if (!amount || !email) {
-    return res.status(400).json({ error: "Missing amount or email" });
-  }
-
   try {
+    const { amount, email } = req.body;
+    if (!amount || !email) {
+      return res.status(400).json({ error: "Missing amount or email" });
+    }
+
     const client = createPaypalClient();
 
     const request = new paypal.orders.OrdersCreateRequest();
+    request.prefer("return=representation");
+
     request.requestBody({
       intent: "CAPTURE",
       purchase_units: [
         {
-          invoice_id: "INV_" + Date.now(),
           amount: {
             currency_code: "USD",
             value: amount.toString(),
           },
-          custom_id: email,
+          custom_id: email, // ⭐ IMPORTANT
         },
       ],
-      application_context: {
-        return_url:
-          "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
-        cancel_url:
-          "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
-      },
     });
 
     const order = await client.execute(request);
 
-    return res.json({
-      orderID: order.result.id,
-      approveLink: order.result.links.find((l) => l.rel === "approve").href,
-    });
+    return res.json({ id: order.result.id });
   } catch (err) {
     console.error("PayPal Create Order Error:", err);
     return res.status(500).json({ error: "PayPal order creation failed" });
@@ -609,46 +597,53 @@ app.post("/api/create-paypal-order", express.json(), async (req, res) => {
 });
 
 app.post("/api/capture-paypal-order", express.json(), async (req, res) => {
-  const { orderID } = req.body;
-  if (!orderID) return res.status(400).json({ error: "Missing orderID" });
-
   try {
-    const client = createPaypalClient();
+    const { orderID } = req.body;
+    if (!orderID) {
+      return res.status(400).json({ error: "Missing orderID" });
+    }
 
+    const client = createPaypalClient(); // ← we already created this earlier
+
+    // Capture request for PayPal
     const request = new paypal.orders.OrdersCaptureRequest(orderID);
     request.requestBody({});
 
     const capture = await client.execute(request);
 
-    const email =
-      capture.result.purchase_units[0].custom_id ||
-      capture.result.payer.email_address;
+    console.log("PayPal Capture Response:", capture.result);
 
-    // STORE PREMIUM USER (same logic as Razorpay)
-    if (email) {
-      const now = new Date();
-      const expireDate = new Date(
-        now.getTime() + 30 * 24 * 60 * 60 * 1000
-      ); // +30 days
+    // Extract buyer email
+    const payerEmail =
+      capture.result.payer?.email_address ||
+      capture.result.purchase_units?.[0]?.payee?.email_address ||
+      null;
 
-      await PaidUser.findOneAndUpdate(
-        { email: email.toLowerCase().trim() },
-        {
-          paidAt: now,
-          expiresAt: expireDate,
-          amount: capture.result.purchase_units[0].amount.value * 100, // USD→cents
-        },
-        { upsert: true }
-      );
+    if (!payerEmail) {
+      console.error("❌ No email found in PayPal capture!");
+      return res.status(500).json({ error: "No email found in transaction" });
     }
+
+    // Store PREMIUM USER — same logic as Razorpay
+    const now = new Date();
+    const expireDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    await PaidUser.findOneAndUpdate(
+      { email: payerEmail.toLowerCase().trim() },
+      {
+        paidAt: now,
+        expiresAt: expireDate,
+        amount: capture.result.purchase_units[0].amount.value, // USD value
+      },
+      { upsert: true, new: true }
+    );
 
     return res.json({ success: true });
   } catch (err) {
     console.error("PayPal Capture Error:", err);
-    return res.status(500).json({ error: "Capture failed" });
+    return res.status(500).json({ error: "PayPal capture failed" });
   }
 });
-
 
 app.get("/api/paypal/verify", async (req, res) => {
   const { token } = req.query;
@@ -666,8 +661,8 @@ app.get("/api/paypal/verify", async (req, res) => {
       result.result.purchase_units[0].shipping.email ||
       null;
 
-    const amount = result.result.purchase_units[0].payments.captures[0].amount
-      .value;
+    const amount =
+      result.result.purchase_units[0].payments.captures[0].amount.value;
 
     // ⭐ Save to MongoDB same as Razorpay
     if (email) {
@@ -691,9 +686,6 @@ app.get("/api/paypal/verify", async (req, res) => {
     return res.status(500).send("Verification failed");
   }
 });
-
-
-
 
 // ------------------------------------------------------
 app.listen(PORT, () => {
