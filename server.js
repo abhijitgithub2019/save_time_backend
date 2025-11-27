@@ -589,7 +589,10 @@ app.post("/api/create-paypal-order", express.json(), async (req, res) => {
 
     const order = await client.execute(request);
 
-    return res.json({ id: order.result.id });
+    return res.json({
+      orderID: order.result.id,
+      approveLink: order.result.links.find((l) => l.rel === "approve").href,
+    });
   } catch (err) {
     console.error("PayPal Create Order Error:", err);
     return res.status(500).json({ error: "PayPal order creation failed" });
