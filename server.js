@@ -587,23 +587,24 @@ app.post("/api/create-paypal-order", express.json(), async (req, res) => {
       intent: "CAPTURE",
       purchase_units: [
         {
-          invoice_id: "INV_" + Date.now(),
           amount: { currency_code: "USD", value: amount.toString() },
           custom_id: email,
         },
       ],
-      // NO return_url for chrome extension
-      application_context: {},
+      application_context: {
+        shipping_preference: "NO_SHIPPING"
+      }
     });
 
     const order = await client.execute(request);
 
-    // Persist pending order in DB so we can find it later
-    await PaypalOrder.create({ orderID: order.result.id, email });
+    await PaypalOrder.create({
+      orderID: order.result.id,
+      email,
+      captured: false,
+    });
 
-    const approveLink = order.result.links.find(
-      (l) => l.rel === "approve"
-    )?.href;
+    const approveLink = order.result.links.find(l => l.rel === "approve")?.href;
 
     return res.json({ orderID: order.result.id, approveLink });
   } catch (err) {
@@ -612,68 +613,73 @@ app.post("/api/create-paypal-order", express.json(), async (req, res) => {
   }
 });
 
+
 app.get("/api/check-paypal-status", async (req, res) => {
   const email = req.query.email?.toLowerCase().trim();
   if (!email) return res.status(400).json({ error: "Missing email" });
 
   try {
-    const pending = await PaypalOrder.findOne({ email, captured: false }).sort({ createdAt: -1 });
+    const pending = await PaypalOrder.findOne({ email, captured: false }).sort({
+      createdAt: -1,
+    });
     if (!pending) return res.json({ status: "pending" });
 
     const client = createPaypalClient();
 
-    // 1) GET the order
     const getReq = new paypal.orders.OrdersGetRequest(pending.orderID);
     const orderResp = await client.execute(getReq);
 
-    const status = orderResp.result.status; // CREATED, APPROVED, COMPLETED, etc.
+    const status = orderResp.result.status;
     console.log("PayPal order status:", pending.orderID, status);
 
     if (status === "APPROVED") {
-      // Try to capture now
       try {
         const capReq = new paypal.orders.OrdersCaptureRequest(pending.orderID);
         capReq.requestBody({});
         const capResp = await client.execute(capReq);
 
-        // mark pending order captured
         pending.captured = true;
         await pending.save();
 
-        // Save premium user — use same logic as razorpay: +30 days
         const payerEmail = capResp.result.payer?.email_address || email;
+
         const now = new Date();
-        const expireDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const expire = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
         await PaidUser.findOneAndUpdate(
           { email: payerEmail.toLowerCase().trim() },
-          { $set: { paidAt: now, expiresAt: expireDate, amount: Math.round(parseFloat(capResp.result.purchase_units[0].payments.captures[0].amount.value * 100)) } },
-          { upsert: true, new: true }
+          {
+            paidAt: now,
+            expiresAt: expire,
+            amount: Math.round(
+              parseFloat(
+                capResp.result.purchase_units[0].payments.captures[0].amount
+                  .value
+              ) * 100
+            ),
+          },
+          { upsert: true }
         );
 
         return res.json({ status: "paid" });
-      } catch (capErr) {
-        console.error("PayPal capture failed:", capErr);
-        return res.status(500).json({ status: "approval_pending", error: "Capture failed" });
+      } catch (err) {
+        console.error("PayPal capture failed:", err);
+        return res.json({ status: "pending" });
       }
     }
 
     if (status === "COMPLETED") {
-      // If already completed, mark paid (just in case)
       pending.captured = true;
       await pending.save();
-
       return res.json({ status: "paid" });
     }
 
-    // Not yet approved/completed
     return res.json({ status: "pending", paypalStatus: status });
   } catch (err) {
     console.error("check-paypal-status error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
-
 
 app.post("/api/capture-paypal-order", express.json(), async (req, res) => {
   try {
