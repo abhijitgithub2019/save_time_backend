@@ -219,16 +219,6 @@ app.post("/api/auth/google", express.json(), async (req, res) => {
   }
 });
 
-function createPaypalClient() {
-  // Use sandbox keys while testing
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const clientSecret = process.env.PAYPAL_SECRET;
-  const environment = new paypal.core.SandboxEnvironment(
-    clientId,
-    clientSecret
-  );
-  return new paypal.core.PayPalHttpClient(environment);
-}
 
 // ⚠️ ONLY Global Middleware: CORS
 app.use(cors());
