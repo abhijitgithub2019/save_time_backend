@@ -25,9 +25,12 @@ app.set("trust proxy", 1);
 // express.json() will now be applied only to the /api/create-payment-link route.
 
 function createPaypalClient() {
+  // Use sandbox keys while testing
+  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_SECRET;
   const environment = new paypal.core.SandboxEnvironment(
-    process.env.PAYPAL_CLIENT_ID,
-    process.env.PAYPAL_SECRET
+    clientId,
+    clientSecret
   );
   return new paypal.core.PayPalHttpClient(environment);
 }
@@ -65,6 +68,15 @@ const PaidUserSchema = new mongoose.Schema({
 });
 
 const PaidUser = mongoose.model("PaidUser", PaidUserSchema);
+
+const PaypalOrderSchema = new mongoose.Schema({
+  orderID: { type: String, required: true, unique: true },
+  email: { type: String, required: true, index: true },
+  createdAt: { type: Date, default: Date.now },
+  captured: { type: Boolean, default: false },
+});
+
+const PaypalOrder = mongoose.model("PaypalOrder", PaypalOrderSchema);
 // ------------------------------------------------------
 
 const EmergencySchema = new mongoose.Schema({
@@ -563,41 +575,105 @@ app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
 });
 
 app.post("/api/create-paypal-order", express.json(), async (req, res) => {
-  try {
-    const { amount, email } = req.body;
-    if (!amount || !email) {
-      return res.status(400).json({ error: "Missing amount or email" });
-    }
+  const { amount, email } = req.body;
+  if (!amount || !email)
+    return res.status(400).json({ error: "Missing amount or email" });
 
+  try {
     const client = createPaypalClient();
 
     const request = new paypal.orders.OrdersCreateRequest();
-    request.prefer("return=representation");
-
     request.requestBody({
       intent: "CAPTURE",
       purchase_units: [
         {
-          amount: {
-            currency_code: "USD",
-            value: amount.toString(),
-          },
-          custom_id: email, // ⭐ IMPORTANT
+          invoice_id: "INV_" + Date.now(),
+          amount: { currency_code: "USD", value: amount.toString() },
+          custom_id: email,
         },
       ],
+      // NO return_url for chrome extension
+      application_context: {},
     });
 
     const order = await client.execute(request);
 
-    return res.json({
-      orderID: order.result.id,
-      approveLink: order.result.links.find((l) => l.rel === "approve").href,
-    });
+    // Persist pending order in DB so we can find it later
+    await PaypalOrder.create({ orderID: order.result.id, email });
+
+    const approveLink = order.result.links.find(
+      (l) => l.rel === "approve"
+    )?.href;
+
+    return res.json({ orderID: order.result.id, approveLink });
   } catch (err) {
     console.error("PayPal Create Order Error:", err);
     return res.status(500).json({ error: "PayPal order creation failed" });
   }
 });
+
+app.get("/api/check-paypal-status", async (req, res) => {
+  const email = req.query.email?.toLowerCase().trim();
+  if (!email) return res.status(400).json({ error: "Missing email" });
+
+  try {
+    const pending = await PaypalOrder.findOne({ email, captured: false }).sort({ createdAt: -1 });
+    if (!pending) return res.json({ status: "pending" });
+
+    const client = createPaypalClient();
+
+    // 1) GET the order
+    const getReq = new paypal.orders.OrdersGetRequest(pending.orderID);
+    const orderResp = await client.execute(getReq);
+
+    const status = orderResp.result.status; // CREATED, APPROVED, COMPLETED, etc.
+    console.log("PayPal order status:", pending.orderID, status);
+
+    if (status === "APPROVED") {
+      // Try to capture now
+      try {
+        const capReq = new paypal.orders.OrdersCaptureRequest(pending.orderID);
+        capReq.requestBody({});
+        const capResp = await client.execute(capReq);
+
+        // mark pending order captured
+        pending.captured = true;
+        await pending.save();
+
+        // Save premium user — use same logic as razorpay: +30 days
+        const payerEmail = capResp.result.payer?.email_address || email;
+        const now = new Date();
+        const expireDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        await PaidUser.findOneAndUpdate(
+          { email: payerEmail.toLowerCase().trim() },
+          { $set: { paidAt: now, expiresAt: expireDate, amount: Math.round(parseFloat(capResp.result.purchase_units[0].payments.captures[0].amount.value * 100)) } },
+          { upsert: true, new: true }
+        );
+
+        return res.json({ status: "paid" });
+      } catch (capErr) {
+        console.error("PayPal capture failed:", capErr);
+        return res.status(500).json({ status: "approval_pending", error: "Capture failed" });
+      }
+    }
+
+    if (status === "COMPLETED") {
+      // If already completed, mark paid (just in case)
+      pending.captured = true;
+      await pending.save();
+
+      return res.json({ status: "paid" });
+    }
+
+    // Not yet approved/completed
+    return res.json({ status: "pending", paypalStatus: status });
+  } catch (err) {
+    console.error("check-paypal-status error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 
 app.post("/api/capture-paypal-order", express.json(), async (req, res) => {
   try {
@@ -645,48 +721,6 @@ app.post("/api/capture-paypal-order", express.json(), async (req, res) => {
   } catch (err) {
     console.error("PayPal Capture Error:", err);
     return res.status(500).json({ error: "PayPal capture failed" });
-  }
-});
-
-app.get("/api/paypal/verify", async (req, res) => {
-  const { token } = req.query;
-
-  if (!token) return res.status(400).send("Missing token");
-
-  const request = new paypal.orders.OrdersCaptureRequest(token);
-  request.requestBody({});
-
-  try {
-    const result = await paypalClient.execute(request);
-
-    const email =
-      result.result.payer.email_address ||
-      result.result.purchase_units[0].shipping.email ||
-      null;
-
-    const amount =
-      result.result.purchase_units[0].payments.captures[0].amount.value;
-
-    // ⭐ Save to MongoDB same as Razorpay
-    if (email) {
-      await PaidUser.findOneAndUpdate(
-        { email: email.toLowerCase() },
-        {
-          paidAt: new Date(),
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          amount: parseFloat(amount) * 100, // convert USD to cents
-        },
-        { upsert: true }
-      );
-    }
-
-    // Redirect to extension page
-    return res.redirect(
-      "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html"
-    );
-  } catch (err) {
-    console.error("PayPal Payment Verify Error:", err);
-    return res.status(500).send("Verification failed");
   }
 });
 
