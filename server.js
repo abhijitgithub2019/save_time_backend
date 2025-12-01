@@ -1041,19 +1041,28 @@ app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
   // ⭐ Send Enhanced Email
   // -------------------------
   try {
-    await resend.emails.send({
-      from: `BlockSocialMedia <onboarding@resend.dev>`,
+    // await resend.emails.send({
+    //   from: `BlockSocialMedia <onboarding@resend.dev>`,
+    //   to: process.env.FEEDBACK_EMAIL,
+    //   subject: `⭐ ${rating}/5 Stars - ${type} Feedback from ${name}`,
+    //   html: emailHtml,
+    //   tags: [
+    //     `feedback-${rating}-stars`,
+    //     `type-${type}`,
+    //     `browser-${deviceInfo.browser}`,
+    //   ],
+    // });
+
+    const resendResult = await resend.emails.send({
+      from: "BlockSocialMedia <onboarding@resend.dev>",
       to: process.env.FEEDBACK_EMAIL,
-      subject: `⭐ ${rating}/5 Stars - ${type} Feedback from ${name}`,
+      subject: `New Feedback – ${rating} ★ – ${type} from ${name}`,
       html: emailHtml,
-      tags: [
-        `feedback-${rating}-stars`,
-        `type-${type}`,
-        `browser-${deviceInfo.browser}`,
-      ],
     });
 
-    console.log(`📬 Feedback sent: ${rating}★ ${type} from ${email}`);
+    console.log("📬 Feedback sent via Resend!", resendResult);
+
+    // console.log(`📬 Feedback sent: ${rating}★ ${type} from ${email}`);
     return res.json({
       success: true,
       message: "Thank you for your feedback! 🎉",
