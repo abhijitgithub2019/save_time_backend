@@ -1169,6 +1169,84 @@ app.post("/api/capture-paypal-order", express.json(), async (req, res) => {
 });
 
 // ------------------------------------------------------
+// 🚨 NEW: Error Reporting Endpoint
+// ------------------------------------------------------
+app.post("/api/report-error", express.json(), async (req, res) => {
+  const { error, context, userEmail, stack, url, userAgent } = req.body;
+
+  if (!error || !context) {
+    return res.status(400).json({ error: "Missing error or context" });
+  }
+
+  // IP & Location
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "Unknown";
+  const location = geoip.lookup(ip) || {};
+  const country = location.country || "Unknown";
+  const city = location.city || "Unknown";
+
+  // Error HTML Template
+  const errorHtml = `
+    <div style="font-family:Arial, sans-serif; padding:20px; background:#f7f7f7;">
+      <div style="max-width:600px; margin:0 auto; background:#ffffff; padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+        
+        <h2 style="color:#d32f2f; margin-top:0;">🚨 New Extension Error</h2>
+        
+        <div style="background:#ffebee; padding:15px; border-radius:8px; border-left:4px solid #f44336;">
+          <h3 style="margin:0 0 10px 0; color:#c62828;">${context}</h3>
+          <p style="margin:0; font-family:monospace; background:#fff; padding:8px; border-radius:4px; white-space:pre-wrap; font-size:14px;">
+            ${error}
+          </p>
+        </div>
+
+        ${stack ? `
+        <details style="margin:20px 0;">
+          <summary style="cursor:pointer; font-weight:600; color:#333; padding:10px; background:#f5f5f5; border-radius:4px;">
+            📋 Full Stack Trace
+          </summary>
+          <pre style="background:#f8f9fa; padding:15px; border-radius:4px; font-size:12px; overflow-x:auto; white-space:pre-wrap; max-height:300px;">
+${stack}
+          </pre>
+        </details>
+        ` : ''}
+
+        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+
+        <h3 style="margin-bottom:10px;">👤 User Info</h3>
+        <p><strong>Email:</strong> ${userEmail || "Not logged in"}</p>
+        <p><strong>IP:</strong> ${ip}</p>
+        <p><strong>Location:</strong> ${city}, ${country}</p>
+        <p><strong>URL:</strong> ${url || "Unknown"}</p>
+
+        <h3 style="margin-top:20px; margin-bottom:8px;">🖥 Technical</h3>
+        <p><strong>User-Agent:</strong> ${userAgent || "Unknown"}</p>
+        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+
+        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+        <p style="font-size:12px; color:#777; text-align:center;">
+          From BlockSocialMedia Chrome Extension
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await resend.emails.send({
+      from: "BlockSocialMedia Errors <onboarding@resend.dev>",
+      to: process.env.FEEDBACK_EMAIL, // Same as your feedback email
+      subject: `🚨 Extension Error: ${context}`,
+      html: errorHtml,
+    });
+
+    console.log(`📧 Error email sent: ${context}`);
+    return res.json({ success: true });
+  } catch (emailErr) {
+    console.error("❌ Failed to send error email:", emailErr);
+    return res.status(500).json({ error: "Failed to report error" });
+  }
+});
+
+
+// ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
 });
