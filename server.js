@@ -219,7 +219,6 @@ app.post("/api/auth/google", express.json(), async (req, res) => {
   }
 });
 
-
 // ⚠️ ONLY Global Middleware: CORS
 app.use(cors());
 
@@ -897,117 +896,171 @@ app.get("/api/delete-emergency-payment", async (req, res) => {
 app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
   const { rating, type, name, email, message } = req.body;
 
-  if (!rating || !type || !name || !email || !message) {
-    return res.status(400).json({ error: "Missing fields" });
+  // Enhanced validation
+  if (!rating || !type || !name?.trim() || !email?.trim() || !message?.trim()) {
+    return res.status(400).json({ error: "Missing or empty required fields" });
+  }
+
+  if (rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "Rating must be 1-5 stars" });
   }
 
   // -------------------------
-  // ⭐ IP Address
+  // ⭐ ENHANCED IP + Location
   // -------------------------
   const ip =
-    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
     req.socket.remoteAddress ||
     "Unknown";
-
-  // -------------------------
-  // ⭐ Location (geoip)
-  // -------------------------
   const location = geoip.lookup(ip) || {};
   const country = location.country || "Unknown";
   const city = location.city || "Unknown";
+  const region = location.region || "Unknown";
 
   // -------------------------
-  // ⭐ Device Info
+  // ⭐ ADVANCED Device Detection
   // -------------------------
   const userAgent = req.headers["user-agent"] || "Unknown Device";
 
   const parseDevice = (ua) => {
-    let browser = "Unknown";
-    let os = "Unknown";
+    let browser = "Unknown",
+      os = "Unknown",
+      device = "Desktop";
 
+    // Browser detection (more precise)
     if (/chrome|crios/i.test(ua)) browser = "Chrome";
-    if (/firefox/i.test(ua)) browser = "Firefox";
-    if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = "Safari";
-    if (/edg/i.test(ua)) browser = "Edge";
+    else if (/firefox/i.test(ua)) browser = "Firefox";
+    else if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = "Safari";
+    else if (/edg/i.test(ua)) browser = "Edge";
+    else if (/opera|opr/i.test(ua)) browser = "Opera";
 
+    // OS + Device detection
     if (/windows/i.test(ua)) os = "Windows";
-    if (/android/i.test(ua)) os = "Android";
-    if (/iphone|ipad|ios/i.test(ua)) os = "iOS";
-    if (/macintosh|mac os/i.test(ua)) os = "MacOS";
-    if (/linux/i.test(ua)) os = "Linux";
+    else if (/macintosh|mac os x/i.test(ua)) os = "macOS";
+    else if (/linux/i.test(ua)) os = "Linux";
+    else if (/android/i.test(ua)) {
+      os = "Android";
+      device = "Mobile";
+    } else if (/iphone|ipad|ipod/i.test(ua)) {
+      os = "iOS";
+      device = "Mobile";
+    }
 
-    return { browser, os };
+    // Extension detection
+    const isExtension = ua.includes("Chrome/") && ua.includes("Extension");
+
+    return { browser, os, device, isExtension };
   };
 
   const deviceInfo = parseDevice(userAgent);
 
   // -------------------------
-  // ⭐ Ready HTML Template
+  // ⭐ STAR RATING VISUAL
+  // -------------------------
+  const starRating = "★".repeat(rating) + "☆".repeat(5 - rating);
+
+  // -------------------------
+  // ⭐ PROFESSIONAL HTML TEMPLATE
   // -------------------------
   const emailHtml = `
-    <div style="font-family:Arial, sans-serif; padding:20px; background:#f7f7f7;">
-      <div style="max-width:600px; margin:0 auto; background:#ffffff; padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; padding:30px; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); min-height:100vh;">
+      <div style="max-width:700px; margin:0 auto; background:#ffffff; border-radius:20px; box-shadow:0 20px 40px rgba(0,0,0,0.1); overflow:hidden;">
+        
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); color:white; padding:30px; text-align:center;">
+          <h1 style="margin:0; font-size:28px; font-weight:700;">📩 New User Feedback</h1>
+          <div style="font-size:24px; margin:10px 0; font-weight:300;">
+            ${starRating}
+          </div>
+          <p style="margin:0; opacity:0.9; font-size:16px;">${rating}/5 Stars</p>
+        </div>
 
-        <h2 style="color:#333; margin-top:0;">📩 New User Feedback</h2>
+        <!-- Content -->
+        <div style="padding:30px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:25px;">
+            <div>
+              <h3 style="margin:0 0 8px 0; color:#374151; font-size:16px;">👤 User Details</h3>
+              <p><strong>Name:</strong> ${name}</p>
+              <p><strong>Email:</strong> <a href="mailto:${email}" style="color:#4f46e5;">${email}</a></p>
+              <p><strong>Type:</strong> <span style="background:#dbeafe; padding:4px 12px; border-radius:20px; color:#1e40af; font-weight:500;">${type}</span></p>
+            </div>
+            <div>
+              <h3 style="margin:0 0 8px 0; color:#374151; font-size:16px;">📍 Location</h3>
+              <p><strong>IP:</strong> <code style="background:#f3f4f6; padding:2px 6px; border-radius:4px; font-family:monospace;">${ip}</code></p>
+              <p><strong>Location:</strong> ${city}, ${region}, ${country}</p>
+            </div>
+          </div>
 
-        <p style="font-size:16px; margin:10px 0;">
-          ⭐ <strong style="color:#FFD700; font-size:18px;">
-            ${"★".repeat(rating)}${"☆".repeat(5 - rating)}
-          </strong>
-        </p>
+          <!-- Message -->
+          <div style="background:#f8fafc; border:2px solid #e2e8f0; border-radius:12px; padding:25px; margin:25px 0;">
+            <h3 style="margin:0 0 15px 0; color:#1f2937;">💬 User Message</h3>
+            <div style="font-size:16px; line-height:1.6; color:#374151; white-space:pre-wrap;">
+              ${message.replace(/\n/g, "<br>")}
+            </div>
+          </div>
 
-        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
+          <!-- Device Info -->
+          <div style="background:#f1f5f9; border-radius:12px; padding:20px; margin-top:25px;">
+            <h3 style="margin:0 0 15px 0; color:#1e293b; display:flex; align-items:center; gap:8px;">
+              🖥️ Device & Browser
+              ${
+                deviceInfo.isExtension
+                  ? '<span style="background:#10b981; color:white; padding:2px 8px; border-radius:12px; font-size:12px;">EXTENSION</span>'
+                  : ""
+              }
+            </h3>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; font-size:14px;">
+              <div><strong>Browser:</strong> ${deviceInfo.browser}</div>
+              <div><strong>OS:</strong> ${deviceInfo.os}</div>
+              <div><strong>Device:</strong> ${deviceInfo.device}</div>
+              <div><strong>User Agent:</strong> ${userAgent.slice(0, 80)}${
+    userAgent.length > 80 ? "..." : ""
+  }</div>
+            </div>
+          </div>
 
-        <p><strong>Type:</strong> ${type}</p>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-
-        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
-
-        <p><strong>Message:</strong></p>
-        <p style="background:#fafafa; padding:12px; border-radius:8px; white-space:pre-wrap;">
-          ${message}
-        </p>
-
-        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
-
-        <h3 style="margin-bottom:8px;">📍 User Info</h3>
-        <p><strong>IP:</strong> ${ip}</p>
-        <p><strong>Country:</strong> ${country}</p>
-        <p><strong>City:</strong> ${city}</p>
-
-        <h3 style="margin-top:20px; margin-bottom:8px;">🖥 Device Info</h3>
-        <p><strong>Browser:</strong> ${deviceInfo.browser}</p>
-        <p><strong>OS:</strong> ${deviceInfo.os}</p>
-        <p><strong>User-Agent:</strong> ${userAgent}</p>
-
-        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
-
-        <p style="font-size:12px; color:#777; text-align:center;">
-          Sent from <strong>BlockSocialMedia Chrome Extension</strong><br/>
-          © ${new Date().getFullYear()} Apatra. All Rights Reserved.
-        </p>
-
+          <!-- Timestamp -->
+          <div style="text-align:center; padding:20px; color:#6b7280; font-size:13px; border-top:1px solid #e5e7eb;">
+            Received: ${new Date().toLocaleString("en-US", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZoneName: "short",
+            })}
+            <br><strong>BlockSocialMedia Chrome Extension</strong> © ${new Date().getFullYear()}
+          </div>
+        </div>
       </div>
     </div>
   `;
 
   // -------------------------
-  // ⭐ Send Email via Resend
+  // ⭐ Send Enhanced Email
   // -------------------------
   try {
     await resend.emails.send({
-      from: "BlockSocialMedia <onboarding@resend.dev>", // ✔ works without domain
+      from: `BlockSocialMedia <onboarding@resend.dev>`,
       to: process.env.FEEDBACK_EMAIL,
-      subject: `New Feedback – ${rating} ★ – ${type}`,
+      subject: `⭐ ${rating}/5 Stars - ${type} Feedback from ${name}`,
       html: emailHtml,
+      tags: [
+        `feedback-${rating}-stars`,
+        `type-${type}`,
+        `browser-${deviceInfo.browser}`,
+      ],
     });
 
-    console.log("📬 Feedback sent via Resend!");
-    return res.json({ success: true });
+    console.log(`📬 Feedback sent: ${rating}★ ${type} from ${email}`);
+    return res.json({
+      success: true,
+      message: "Thank you for your feedback! 🎉",
+    });
   } catch (err) {
     console.error("❌ Resend Email Error:", err);
-    return res.status(500).json({ error: "Email sending failed." });
+    return res.status(500).json({ error: "Failed to send feedback" });
   }
 });
 
@@ -1171,59 +1224,57 @@ app.post("/api/capture-paypal-order", express.json(), async (req, res) => {
 // ------------------------------------------------------
 // 🚨 NEW: Error Reporting Endpoint
 // ------------------------------------------------------
-app.post("/api/report-error", express.json(), async (req, res) => {
-  const { error, context, userEmail, stack, url, userAgent } = req.body;
+// 🚨 DAILY ERROR SUMMARY ENDPOINT
+app.post("/api/report-error-daily", express.json(), async (req, res) => {
+  const { errors, date } = req.body;
 
-  if (!error || !context) {
-    return res.status(400).json({ error: "Missing error or context" });
+  if (!errors || !Array.isArray(errors) || errors.length === 0) {
+    return res.json({ success: true });
   }
 
-  // IP & Location
-  const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress || "Unknown";
+  // IP for geo
+  const ip =
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.socket.remoteAddress ||
+    "Unknown";
   const location = geoip.lookup(ip) || {};
-  const country = location.country || "Unknown";
-  const city = location.city || "Unknown";
 
-  // Error HTML Template
-  const errorHtml = `
+  // Build HTML summary
+  let emailHtml = `
     <div style="font-family:Arial, sans-serif; padding:20px; background:#f7f7f7;">
-      <div style="max-width:600px; margin:0 auto; background:#ffffff; padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <div style="max-width:700px; margin:0 auto; background:#ffffff; padding:25px; border-radius:12px;">
+        <h1 style="color:#d32f2f;">📊 Daily Extension Error Report</h1>
+        <h2 style="color:#333;">${date} (${errors.length} errors)</h2>
         
-        <h2 style="color:#d32f2f; margin-top:0;">🚨 New Extension Error</h2>
-        
-        <div style="background:#ffebee; padding:15px; border-radius:8px; border-left:4px solid #f44336;">
-          <h3 style="margin:0 0 10px 0; color:#c62828;">${context}</h3>
-          <p style="margin:0; font-family:monospace; background:#fff; padding:8px; border-radius:4px; white-space:pre-wrap; font-size:14px;">
-            ${error}
-          </p>
+        <div style="background:#fff3cd; padding:15px; border-radius:8px; margin:20px 0;">
+          <p><strong>IP:</strong> ${ip} | <strong>Location:</strong> ${
+    location.city || "N/A"
+  }, ${location.country || "N/A"}</p>
         </div>
+  `;
 
-        ${stack ? `
-        <details style="margin:20px 0;">
-          <summary style="cursor:pointer; font-weight:600; color:#333; padding:10px; background:#f5f5f5; border-radius:4px;">
-            📋 Full Stack Trace
-          </summary>
-          <pre style="background:#f8f9fa; padding:15px; border-radius:4px; font-size:12px; overflow-x:auto; white-space:pre-wrap; max-height:300px;">
-${stack}
-          </pre>
-        </details>
-        ` : ''}
+  errors.forEach((err, i) => {
+    emailHtml += `
+      <div style="border-left:4px solid #f44336; padding:15px; margin:20px 0; background:#fafafa;">
+        <h3 style="margin-top:0;">#${i + 1} ${err.context}</h3>
+        <p><strong>Time:</strong> ${new Date(
+          err.timestamp
+        ).toLocaleString()}</p>
+        <p><strong>User:</strong> ${err.userEmail}</p>
+        <p><strong>Message:</strong> ${err.message}</p>
+        ${
+          err.stack
+            ? `<details><summary>Stack Trace</summary><pre style="font-size:11px; overflow:auto;">${err.stack}</pre></details>`
+            : ""
+        }
+      </div>
+    `;
+  });
 
-        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
-
-        <h3 style="margin-bottom:10px;">👤 User Info</h3>
-        <p><strong>Email:</strong> ${userEmail || "Not logged in"}</p>
-        <p><strong>IP:</strong> ${ip}</p>
-        <p><strong>Location:</strong> ${city}, ${country}</p>
-        <p><strong>URL:</strong> ${url || "Unknown"}</p>
-
-        <h3 style="margin-top:20px; margin-bottom:8px;">🖥 Technical</h3>
-        <p><strong>User-Agent:</strong> ${userAgent || "Unknown"}</p>
-        <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-
-        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;" />
-        <p style="font-size:12px; color:#777; text-align:center;">
-          From BlockSocialMedia Chrome Extension
+  emailHtml += `
+        <hr/>
+        <p style="text-align:center; color:#666; font-size:12px;">
+          BlockSocialMedia Chrome Extension | Auto-generated daily report
         </p>
       </div>
     </div>
@@ -1231,20 +1282,19 @@ ${stack}
 
   try {
     await resend.emails.send({
-      from: "BlockSocialMedia Errors <onboarding@resend.dev>",
-      to: process.env.FEEDBACK_EMAIL, // Same as your feedback email
-      subject: `🚨 Extension Error: ${context}`,
-      html: errorHtml,
+      from: "BlockSocialMedia Daily <onboarding@resend.dev>",
+      to: process.env.FEEDBACK_EMAIL,
+      subject: `📊 Extension Errors: ${errors.length} issues on ${date}`,
+      html: emailHtml,
     });
 
-    console.log(`📧 Error email sent: ${context}`);
-    return res.json({ success: true });
-  } catch (emailErr) {
-    console.error("❌ Failed to send error email:", emailErr);
-    return res.status(500).json({ error: "Failed to report error" });
+    console.log(`📧 Daily report sent: ${errors.length} errors on ${date}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Daily report email failed:", err);
+    res.status(500).json({ error: "Email failed" });
   }
 });
-
 
 // ------------------------------------------------------
 app.listen(PORT, () => {
