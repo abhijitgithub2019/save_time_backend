@@ -1306,62 +1306,23 @@ app.post("/api/report-error-daily", express.json(), async (req, res) => {
 });
 
 // 👇 ADD THIS ENDPOINT (after your /api/country endpoint)
-app.get("/api/country-lang", async (req, res) => {
-  const ip =
-    req.headers["x-forwarded-for"]?.split(",")[0] ||
-    req.socket.remoteAddress ||
-    "Unknown";
-  const geo = geoip.lookup(ip);
+// ADD TO YOUR server.js (5 lines)
+app.get("/api/country-lang", (req, res) => {
+  const geo = geoip.lookup(req.ip);
+  const countryLang =
+    {
+      IN: "hi",
+      BD: "bn",
+      US: "en",
+      ES: "es",
+      IT: "it",
+      DE: "de",
+      PT: "pt",
+      BR: "pt",
+      MX: "es",
+    }[geo?.country] || "en";
 
-  const countryCode = geo?.country || "IN";
-  const countryName = geo?.country || "India";
-
-  // 👇 NEW: Country → Language mapping (same as frontend)
-  const countryLangMap = {
-    IN: { lang: "en", name: "English" },
-    US: { lang: "en", name: "English" },
-    GB: { lang: "en", name: "English" },
-    CA: { lang: "en", name: "English" },
-    AU: { lang: "en", name: "English" },
-    BR: { lang: "pt", name: "Português" },
-    MX: { lang: "es", name: "Español" },
-    ES: { lang: "es", name: "Español" },
-    FR: { lang: "fr", name: "Français" },
-    DE: { lang: "de", name: "Deutsch" },
-  };
-
-  const detectedLang = countryLangMap[countryCode]?.lang || "en";
-
-  res.json({
-    countryCode,
-    countryName,
-    language: detectedLang,
-    languageName: countryLangMap[countryCode]?.name || "English",
-    confidence: geo ? "high" : "low",
-  });
-});
-
-app.post("/api/translate", express.json(), async (req, res) => {
-  const { texts, targetLang } = req.body;
-
-  try {
-    const translated = await Promise.all(
-      texts.map(async (text) => {
-        const response = await fetch(
-          `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${targetLang}&dt=t&q=${encodeURIComponent(
-            text
-          )}`
-        );
-        const data = await response.json();
-        if (data.length) {
-          return data[0][0][0];
-        }
-      })
-    );
-    res.json({ translations: translated });
-  } catch (e) {
-    res.status(500).json({ error: "Translation failed" });
-  }
+  res.json({ language: countryLang, country: geo?.country || "IN" });
 });
 
 // ------------------------------------------------------
