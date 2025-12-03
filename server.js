@@ -1305,6 +1305,42 @@ app.post("/api/report-error-daily", express.json(), async (req, res) => {
   }
 });
 
+// 👇 ADD THIS ENDPOINT (after your /api/country endpoint)
+app.get("/api/country-lang", async (req, res) => {
+  const ip =
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.socket.remoteAddress ||
+    "Unknown";
+  const geo = geoip.lookup(ip);
+
+  const countryCode = geo?.country || "IN";
+  const countryName = geo?.country || "India";
+
+  // 👇 NEW: Country → Language mapping (same as frontend)
+  const countryLangMap = {
+    IN: { lang: "en", name: "English" },
+    US: { lang: "en", name: "English" },
+    GB: { lang: "en", name: "English" },
+    CA: { lang: "en", name: "English" },
+    AU: { lang: "en", name: "English" },
+    BR: { lang: "pt", name: "Português" },
+    MX: { lang: "es", name: "Español" },
+    ES: { lang: "es", name: "Español" },
+    FR: { lang: "fr", name: "Français" },
+    DE: { lang: "de", name: "Deutsch" },
+  };
+
+  const detectedLang = countryLangMap[countryCode]?.lang || "en";
+
+  res.json({
+    countryCode,
+    countryName,
+    language: detectedLang,
+    languageName: countryLangMap[countryCode]?.name || "English",
+    confidence: geo ? "high" : "low",
+  });
+});
+
 // ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
