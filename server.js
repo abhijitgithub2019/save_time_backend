@@ -1341,6 +1341,29 @@ app.get("/api/country-lang", async (req, res) => {
   });
 });
 
+app.post("/api/translate", express.json(), async (req, res) => {
+  const { texts, targetLang } = req.body;
+
+  try {
+    const translated = await Promise.all(
+      texts.map(async (text) => {
+        const response = await fetch(
+          `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${targetLang}&dt=t&q=${encodeURIComponent(
+            text
+          )}`
+        );
+        const data = await response.json();
+        if (data.length) {
+          return data[0][0][0];
+        }
+      })
+    );
+    res.json({ translations: translated });
+  } catch (e) {
+    res.status(500).json({ error: "Translation failed" });
+  }
+});
+
 // ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
