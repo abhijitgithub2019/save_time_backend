@@ -413,7 +413,7 @@ app.post(
         const cleanedEmail = email.toLowerCase().trim();
 
         try {
-          if (amount === 7900) {
+          if (amount === 4900) {
             const now = new Date();
             const expireDate = new Date(
               now.getTime() + 30 * 24 * 60 * 60 * 1000
@@ -431,10 +431,10 @@ app.post(
               { upsert: true, new: true }
             );
             console.log(`✔️ Premium payment saved for: ${cleanedEmail}`);
-          } else if (amount === 4900) {
+          } else if (amount === 2900) {
             await EmergencyUnlock.create({
               email: cleanedEmail,
-              amount: 4900,
+              amount: 2900,
               status: "paid",
               used: false,
               razorpay_payment_id: body.payload.payment?.entity?.id || null,
@@ -852,7 +852,7 @@ app.get("/api/delete-emergency-payment", async (req, res) => {
   try {
     const result = await EmergencyUnlock.deleteOne({
       email: email,
-      amount: 4900,
+      amount: 2900,
     });
 
     if (result.deletedCount > 0) {
@@ -1303,26 +1303,6 @@ app.post("/api/report-error-daily", express.json(), async (req, res) => {
     console.error("Daily report email failed:", err);
     res.status(500).json({ error: "Email failed" });
   }
-});
-
-// 👇 ADD THIS ENDPOINT (after your /api/country endpoint)
-// ADD TO YOUR server.js (5 lines)
-app.get("/api/country-lang", (req, res) => {
-  const geo = geoip.lookup(req.ip);
-  const countryLang =
-    {
-      IN: "hi",
-      BD: "bn",
-      US: "en",
-      ES: "es",
-      IT: "it",
-      DE: "de",
-      PT: "pt",
-      BR: "pt",
-      MX: "es",
-    }[geo?.country] || "en";
-
-  res.json({ language: countryLang, country: geo?.country || "IN" });
 });
 
 // ------------------------------------------------------
