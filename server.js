@@ -11,6 +11,7 @@ import paypal from "@paypal/checkout-server-sdk";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
 
@@ -161,20 +162,29 @@ const DailyUsageSchema = new mongoose.Schema({
   siteId: { type: String, required: true },
   date: { type: String, required: true }, // "YYYY-MM-DD"
   totalMinutes: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now }, // for TTL
+  createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
 
-// Unique per device+site+day
 DailyUsageSchema.index({ deviceId: 1, siteId: 1, date: 1 }, { unique: true });
-
-// TTL index: delete docs 7 days after createdAt
 DailyUsageSchema.index(
   { createdAt: 1 },
   { expireAfterSeconds: 7 * 24 * 60 * 60 }
 );
 
 const DailyUsage = mongoose.model("DailyUsage", DailyUsageSchema);
+
+const UserSchema = new mongoose.Schema(
+  {
+    name: { type: String, trim: true },
+    email: { type: String, required: true, unique: true, index: true },
+    passwordHash: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { collection: "users" }
+);
+
+const User = mongoose.model("User", UserSchema);
 
 // ------------------------------------------------------
 // Helper: PayPal client factory
@@ -1046,6 +1056,93 @@ app.post("/api/free-log-usage", express.json(), async (req, res) => {
     return res.json({ success: true, used, remaining, limit: 30 });
   } catch (e) {
     console.error("free-log-usage error", e);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ------------------------------------------------------
+// Email + Password SIGNUP
+// ------------------------------------------------------
+app.post("/api/auth/signup", express.json(), async (req, res) => {
+  try {
+    const { name, email, password } = req.body || {};
+
+    if (!name || !name.trim() || !email || !password) {
+      return res
+        .status(400)
+        .json({ error: "Name, email and password are required" });
+    }
+
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 6 characters" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      return res
+        .status(409)
+        .json({ error: "Email already registered. Please log in." });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      passwordHash,
+    });
+
+    const jwtToken = signJwt({ email: user.email });
+
+    return res.json({
+      jwt: jwtToken,
+      email: user.email,
+      name: user.name,
+      expiresIn: JWT_EXPIRY,
+    });
+  } catch (err) {
+    console.error("Email signup error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ------------------------------------------------------
+// Email + Password LOGIN
+// ------------------------------------------------------
+app.post("/api/auth/login", express.json(), async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const jwtToken = signJwt({ email: user.email });
+
+    return res.json({
+      jwt: jwtToken,
+      email: user.email,
+      name: user.name,
+      expiresIn: JWT_EXPIRY,
+    });
+  } catch (err) {
+    console.error("Email login error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 });
