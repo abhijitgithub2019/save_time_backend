@@ -156,16 +156,25 @@ const EmergencySchema = new mongoose.Schema({
 
 const EmergencyUnlock = mongoose.model("EmergencyUnlock", EmergencySchema);
 
-
 const DailyUsageSchema = new mongoose.Schema({
   deviceId: { type: String, required: true, index: true },
-  date: { type: String, required: true }, // YYYY-MM-DD
+  siteId: { type: String, required: true },
+  date: { type: String, required: true }, // "YYYY-MM-DD"
   totalMinutes: { type: Number, default: 0 },
-  updatedAt: { type: Date, default: Date.now }
-})
+  createdAt: { type: Date, default: Date.now }, // for TTL
+  updatedAt: { type: Date, default: Date.now },
+});
 
-DailyUsageSchema.index({ deviceId: 1, date: 1 }, { unique: true });
-const DailyUsage = mongoose.model('DailyUsage', DailyUsageSchema);
+// Unique per device+site+day
+DailyUsageSchema.index({ deviceId: 1, siteId: 1, date: 1 }, { unique: true });
+
+// TTL index: delete docs 7 days after createdAt
+DailyUsageSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 7 * 24 * 60 * 60 }
+);
+
+const DailyUsage = mongoose.model("DailyUsage", DailyUsageSchema);
 
 // ------------------------------------------------------
 // Helper: PayPal client factory
@@ -495,7 +504,6 @@ app.get("/api/check-payment-status", verifyJwt, async (req, res) => {
   }
 });
 
-
 // Health
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
@@ -580,7 +588,6 @@ app.get("/api/delete-emergency-payment", async (req, res) => {
     return res.status(500).json({ error: "Database delete error" });
   }
 });
-
 
 app.post("/api/feedback", feedbackLimiter, express.json(), async (req, res) => {
   const { rating, type, name, email, message } = req.body;
@@ -992,44 +999,44 @@ app.post("/api/report-error-daily", express.json(), async (req, res) => {
   }
 });
 
-
-app.get('/api/free-limit-status', async (req, res) => {
+app.get("/api/free-limit-status", async (req, res) => {
   const deviceId = req.query.deviceId;
-  if (!deviceId) {
-    return res.status(400).json({ error: 'Missing deviceId' });
+  const siteId = req.query.siteId;
+  if (!deviceId || !siteId) {
+    return res.status(400).json({ error: "Missing deviceId or siteId" });
   }
 
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = new Date().toISOString().slice(0, 10);
 
   try {
-    const usage = await DailyUsage.findOne({ deviceId, date: today });
+    const usage = await DailyUsage.findOne({ deviceId, siteId, date: today });
     const used = usage?.totalMinutes || 0;
     const remaining = Math.max(0, 30 - used);
     const canUse = remaining > 0;
 
     return res.json({ canUse, used, remaining, limit: 30 });
   } catch (e) {
-    console.error('free-limit-status error', e);
-    return res.status(500).json({ error: 'Server error' });
+    console.error("free-limit-status error", e);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
-app.post('/api/free-log-usage', express.json(), async (req, res) => {
-  const { deviceId, minutes } = req.body;
+app.post("/api/free-log-usage", express.json(), async (req, res) => {
+  const { deviceId, siteId, minutes } = req.body;
 
-  if (!deviceId || !minutes || minutes <= 0) {
-    return res.status(400).json({ error: 'Invalid deviceId or minutes' });
+  if (!deviceId || !siteId || !minutes || minutes <= 0) {
+    return res.status(400).json({ error: "Invalid deviceId/siteId/minutes" });
   }
 
   const today = new Date().toISOString().slice(0, 10);
 
   try {
     const doc = await DailyUsage.findOneAndUpdate(
-      { deviceId, date: today },
+      { deviceId, siteId, date: today },
       {
-        $setOnInsert: { deviceId, date: today },
+        $setOnInsert: { deviceId, siteId, date: today, createdAt: new Date() },
         $inc: { totalMinutes: minutes },
-        $set: { updatedAt: new Date() }
+        $set: { updatedAt: new Date() },
       },
       { new: true, upsert: true }
     );
@@ -1038,8 +1045,8 @@ app.post('/api/free-log-usage', express.json(), async (req, res) => {
     const remaining = Math.max(0, 30 - used);
     return res.json({ success: true, used, remaining, limit: 30 });
   } catch (e) {
-    console.error('free-log-usage error', e);
-    return res.status(500).json({ error: 'Server error' });
+    console.error("free-log-usage error", e);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
