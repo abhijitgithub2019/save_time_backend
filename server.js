@@ -186,6 +186,21 @@ const UserSchema = new mongoose.Schema(
 
 const User = mongoose.model("User", UserSchema);
 
+const OtpSchema = new mongoose.Schema(
+  {
+    email: { type: String, required: true, index: true },
+    otp: { type: String, required: true },
+    purpose: { type: String, default: "pin_reset" },
+    createdAt: { type: Date, default: Date.now, index: true },
+  },
+  { collection: "otps" }
+);
+
+// TTL: delete docs 2 minutes after createdAt
+OtpSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2 * 60 });
+
+const Otp = mongoose.model("Otp", OtpSchema);
+
 // ------------------------------------------------------
 // Helper: PayPal client factory
 // ------------------------------------------------------
@@ -1151,6 +1166,136 @@ app.post("/api/auth/login", express.json(), async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 });
+
+const sendPinOtpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 4, // max 4 OTP emails per 15 min per IP
+  message: { error: "Too many OTP requests. Try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post(
+  "/api/pin/send-otp",
+  express.json(),
+  sendPinOtpLimiter,
+  async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email required" });
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    try {
+      // optional: delete old OTPs for this email
+      await Otp.deleteMany({ email: normalizedEmail, purpose: "pin_reset" });
+
+      await Otp.create({
+        email: normalizedEmail,
+        otp,
+        purpose: "pin_reset",
+      });
+
+      await resend.emails.send({
+        from: "BlockSocialMedia <onboarding@resend.dev>",
+        to: normalizedEmail,
+        subject: "Block Social Media - PIN Reset Code",
+        html: `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; background:#f3f4f6; padding:24px;">
+          <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:16px; box-shadow:0 10px 30px rgba(15,23,42,0.12); overflow:hidden;">
+            
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:18px 24px; color:#ffffff;">
+              <h1 style="margin:0; font-size:20px; font-weight:600;">PIN Reset Code</h1>
+              <p style="margin:4px 0 0; font-size:13px; opacity:0.9;">
+                Pin Reset - BlockSocialMedia 
+              </p>
+            </div>
+      
+            <!-- Content -->
+            <div style="padding:24px 24px 20px;">
+              <p style="margin:0 0 12px; font-size:14px; color:#111827;">
+                Use the following one-time code to reset your PIN.
+              </p>
+      
+              <!-- OTP Code -->
+              <div style="
+                margin:16px 0 18px;
+                padding:14px 20px;
+                background:#111827;
+                color:#f9fafb;
+                font-size:26px;
+                font-weight:700;
+                letter-spacing:8px;
+                text-align:center;
+                border-radius:12px;
+              ">
+                ${otp}
+              </div>
+      
+              <p style="margin:0 0 8px; font-size:13px; color:#4b5563;">
+                This code is valid for <strong>2 minutes</strong>. For your security, do not share it with anyone.
+              </p>
+              <p style="margin:0 0 16px; font-size:13px; color:#6b7280;">
+                If you did not request a PIN reset, you can safely ignore this email. Your existing PIN will remain active.
+              </p>
+      
+              <hr style="border:none; border-top:1px solid #e5e7eb; margin:18px 0 14px;" />
+      
+              <p style="margin:0; font-size:11px; color:#9ca3af; line-height:1.5;">
+                Sent by <strong>BlockSocialMedia · SaveTime</strong><br/>
+                You are receiving this email because a PIN reset was requested from the Chrome extension.
+              </p>
+            </div>
+          </div>
+        </div>
+      `,
+      });
+
+      res.json({ success: true, message: "OTP sent" });
+    } catch (err) {
+      console.error("Send OTP error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  }
+);
+
+app.post(
+  "/api/pin/reset",
+  express.json(),
+  pinResetLimiter,
+  async (req, res) => {
+    const { email, otp } = req.body;
+    if (!email || !otp || otp.length !== 6) {
+      return res
+        .status(400)
+        .json({ error: "Valid email and 6-digit OTP required" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    try {
+      const record = await Otp.findOne({
+        email: normalizedEmail,
+        purpose: "pin_reset",
+        otp,
+      });
+
+      if (!record) {
+        return res.status(400).json({ error: "Invalid or expired OTP" });
+      }
+
+      // consume OTP
+      await Otp.deleteMany({ email: normalizedEmail, purpose: "pin_reset" });
+
+      // you don't touch PIN here; frontend will clear local PIN after success
+      res.json({ success: true });
+    } catch (err) {
+      console.error("PIN reset verify error:", err);
+      res.status(500).json({ error: "Server error" });
+    }
+  }
+);
 
 // ------------------------------------------------------
 app.listen(PORT, () => {
