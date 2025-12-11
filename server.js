@@ -1251,7 +1251,7 @@ app.post(
         </div>
       `,
       });
-
+      console.log("📧 OTP email sent via Resend:", otp);
       res.json({ success: true, message: "OTP sent" });
     } catch (err) {
       console.error("Send OTP error:", err);
