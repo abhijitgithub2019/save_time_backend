@@ -191,7 +191,7 @@ const OtpSchema = new mongoose.Schema(
     email: { type: String, required: true, index: true },
     otp: { type: String, required: true },
     purpose: { type: String, default: "pin_reset" },
-    createdAt: { type: Date, default: Date.now, index: true },
+    createdAt: { type: Date, default: Date.now},
   },
   { collection: "otps" }
 );
