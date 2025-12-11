@@ -295,6 +295,11 @@ app.post(
       callback_url:
         "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
       callback_method: "get",
+      options: {
+        checkout: {
+          name: "BlockSocialMedia", // forces app name in checkout
+        },
+      },
     };
 
     try {
