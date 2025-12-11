@@ -191,7 +191,7 @@ const OtpSchema = new mongoose.Schema(
     email: { type: String, required: true, index: true },
     otp: { type: String, required: true },
     purpose: { type: String, default: "pin_reset" },
-    createdAt: { type: Date, default: Date.now},
+    createdAt: { type: Date, default: Date.now },
   },
   { collection: "otps" }
 );
@@ -200,6 +200,21 @@ const OtpSchema = new mongoose.Schema(
 OtpSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2 * 60 });
 
 const Otp = mongoose.model("Otp", OtpSchema);
+
+const PinSettingsSchema = new mongoose.Schema(
+  {
+    email: { type: String, required: true, unique: true, index: true },
+    pinHash: { type: String, required: true }, // hashed PIN
+    areas: { type: [String], default: [] }, // e.g. ["pinlocktime", "pincustomurl"]
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { collection: "pin_settings" }
+);
+
+PinSettingsSchema.index({ email: 1 }, { unique: true });
+
+const PinSettings = mongoose.model("PinSettings", PinSettingsSchema);
 
 // ------------------------------------------------------
 // Helper: PayPal client factory
@@ -1262,7 +1277,7 @@ app.post(
 
 const pinResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,                  // e.g. 4 verify attempts per 15 min per IP
+  max: 5, // e.g. 4 verify attempts per 15 min per IP
   message: { error: "Too many PIN reset attempts. Try again later." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -1295,7 +1310,7 @@ app.post(
 
       // consume OTP
       await Otp.deleteMany({ email: normalizedEmail, purpose: "pin_reset" });
-
+      await PinSettings.deleteOne({ email: normalizedEmail });
       // you don't touch PIN here; frontend will clear local PIN after success
       res.json({ success: true });
     } catch (err) {
@@ -1304,6 +1319,85 @@ app.post(
     }
   }
 );
+
+// Save or update PIN settings for a user
+app.post("/api/pin/save", express.json(), verifyJwt, async (req, res) => {
+  try {
+    const { email: bodyEmail, pin, areas } = req.body || {};
+
+    // email from JWT is the trusted one
+    const email = (req.user?.email || bodyEmail || "").toLowerCase().trim();
+    if (!email) {
+      return res.status(400).json({ error: "Missing email" });
+    }
+
+    if (!Array.isArray(areas)) {
+      return res.status(400).json({ error: "areas must be an array" });
+    }
+
+    let update = { areas, updatedAt: new Date() };
+
+    if (pin) {
+      if (typeof pin !== "string" || pin.length !== 6) {
+        return res.status(400).json({ error: "PIN must be 6 digits" });
+      }
+      // hash new PIN
+      const pinHash = await bcrypt.hash(pin, 10);
+      update.pinHash = pinHash;
+      if (!update.createdAt) update.createdAt = new Date();
+    }
+
+    const result = await PinSettings.findOneAndUpdate(
+      { email },
+      { $set: update },
+      { upsert: !!pin, new: true }
+    );
+
+    if (!result) {
+      return res.status(400).json({ error: "PIN not found for update" });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("PIN save error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/pin/verify", express.json(), verifyJwt, async (req, res) => {
+  try {
+    const { email: bodyEmail, pin, areaId } = req.body || {};
+
+    const email = (req.user?.email || bodyEmail || "").toLowerCase().trim();
+    if (!email || !pin || !areaId) {
+      return res.status(400).json({ ok: false, error: "Missing fields" });
+    }
+
+    const settings = await PinSettings.findOne({ email });
+    if (!settings || !settings.pinHash) {
+      return res.status(400).json({ ok: false, error: "PIN not set" });
+    }
+
+    // If this area is not protected, treat as allowed
+    if (
+      settings.areas &&
+      !settings.areas.includes(areaId) &&
+      areaId !== "pinmaster"
+    ) {
+      return res.json({ ok: true });
+    }
+
+    const valid = await bcrypt.compare(pin, settings.pinHash);
+    if (!valid) {
+      return res.status(401).json({ ok: false, error: "Incorrect PIN" });
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("PIN verify error:", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
 
 // ------------------------------------------------------
 app.listen(PORT, () => {
