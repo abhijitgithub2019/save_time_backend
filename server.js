@@ -1260,6 +1260,14 @@ app.post(
   }
 );
 
+const pinResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,                  // e.g. 4 verify attempts per 15 min per IP
+  message: { error: "Too many PIN reset attempts. Try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.post(
   "/api/pin/reset",
   express.json(),
