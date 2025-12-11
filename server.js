@@ -212,7 +212,7 @@ const PinSettingsSchema = new mongoose.Schema(
   { collection: "pin_settings" }
 );
 
-PinSettingsSchema.index({ email: 1 }, { unique: true });
+// PinSettingsSchema.index({ email: 1 }, { unique: true });
 
 const PinSettings = mongoose.model("PinSettings", PinSettingsSchema);
 
