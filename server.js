@@ -107,6 +107,10 @@ function verifyJwt(req, res, next) {
 
 
 async function sendOtpEmail(email, otp) {
+  if (!process.env.BREVO_API_KEY) {
+    throw new Error("BREVO_API_KEY not configured");
+  }
+
   await axios.post(
     "https://api.brevo.com/v3/smtp/email",
     {
@@ -117,18 +121,23 @@ async function sendOtpEmail(email, otp) {
       to: [{ email }],
       subject: "Block Social Media - PIN Reset Code",
       htmlContent: `
-        <h2>Your OTP is ${otp}</h2>
-        <p>Valid for 2 minutes.</p>
+        <div style="font-family:Arial,sans-serif">
+          <h2>Your OTP is ${otp}</h2>
+          <p>This code is valid for 2 minutes.</p>
+        </div>
       `,
     },
     {
       headers: {
         "api-key": process.env.BREVO_API_KEY,
-        "content-type": "application/json",
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
+      timeout: 10000,
     }
   );
 }
+
 // ------------------------------------------------------
 // Rate limiters and helpers
 // ------------------------------------------------------
