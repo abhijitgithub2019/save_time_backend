@@ -12,6 +12,16 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
 import bcrypt from "bcryptjs";
+import nodemailer from "nodemailer";
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
 
 dotenv.config();
 
@@ -1211,8 +1221,8 @@ app.post(
         purpose: "pin_reset",
       });
 
-      await resend.emails.send({
-        from: "BlockSocialMedia <onboarding@resend.dev>",
+      const mailOptions = {
+        from: '"BlockSocialMedia" <blocksocialmediaofficial@gmail.com>',
         to: normalizedEmail,
         subject: "Block Social Media - PIN Reset Code",
         html: `
@@ -1265,8 +1275,22 @@ app.post(
           </div>
         </div>
       `,
+      };
+
+      // await resend.emails.send({
+      //   from: "BlockSocialMedia <onboarding@resend.dev>",
+      //   to: normalizedEmail,
+      //   subject: "Block Social Media - PIN Reset Code",
+      //   html: 
+      // });
+
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          return console.log("Error:", error);
+        }
+        console.log("📧 OTP email sent via Resend:", otp);
       });
-      console.log("📧 OTP email sent via Resend:", otp);
+     
       res.json({ success: true, message: "OTP sent" });
     } catch (err) {
       console.error("Send OTP error:", err);
