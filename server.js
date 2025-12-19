@@ -14,6 +14,8 @@ import helmet from "helmet";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
 
+dotenv.config();
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -22,8 +24,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
-dotenv.config();
 
 import { Resend } from "resend";
 
