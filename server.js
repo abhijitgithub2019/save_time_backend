@@ -16,10 +16,16 @@ import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // Use SSL/TLS
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
 transporter.verify((error, success) => {
@@ -28,8 +34,7 @@ transporter.verify((error, success) => {
   } else {
     console.log("✅ Server is ready to send emails");
   }
-})
-
+});
 
 import { Resend } from "resend";
 
@@ -1287,7 +1292,7 @@ app.post(
       //   from: "BlockSocialMedia <onboarding@resend.dev>",
       //   to: normalizedEmail,
       //   subject: "Block Social Media - PIN Reset Code",
-      //   html: 
+      //   html:
       // });
 
       const info = await transporter.sendMail(mailOptions);
@@ -1299,7 +1304,7 @@ app.post(
       //   }
       //   console.log("📧 OTP email sent via Resend:", otp);
       // });
-     
+
       res.json({ success: true, message: "OTP sent" });
     } catch (err) {
       console.error("Send OTP error:", err);
