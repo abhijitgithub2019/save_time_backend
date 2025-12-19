@@ -108,36 +108,42 @@ function verifyJwt(req, res, next) {
 
 async function sendOtpEmail(email, otp) {
   if (!process.env.BREVO_API_KEY) {
+    console.error("❌ BREVO_API_KEY is missing in Render environment variables.");
     throw new Error("BREVO_API_KEY not configured");
   }
 
-  await axios.post(
-    "https://api.brevo.com/v3/smtp/email",
-    {
-      sender: {
-        name: "BlockSocialMedia",
-        email: "no-reply@brevo.com",
+  try {
+    await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: {
+          name: "BlockSocialMedia",
+          email: "blocksocialmediaofficial@gmail.com",
+        },
+        to: [{ email }],
+        subject: "Block Social Media - PIN Reset Code",
+        htmlContent: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #ddd; border-radius: 10px;">
+            <h2 style="color: #4f46e5;">Verification Code</h2>
+            <p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">${otp}</p>
+            <p style="color: #666;">This code is valid for 2 minutes. If you did not request this, please ignore this email.</p>
+          </div>
+        `,
       },
-      to: [{ email }],
-      subject: "Block Social Media - PIN Reset Code",
-      htmlContent: `
-        <div style="font-family:Arial,sans-serif">
-          <h2>Your OTP is ${otp}</h2>
-          <p>This code is valid for 2 minutes.</p>
-        </div>
-      `,
-    },
-    {
-      headers: {
-        "api-key": process.env.BREVO_API_KEY,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      timeout: 10000,
-    }
-  );
+      {
+        headers: {
+          "api-key": process.env.BREVO_API_KEY,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      }
+    );
+    console.log(`✅ OTP sent successfully to: ${email}`);
+  } catch (error) {
+    console.error("❌ Brevo API Error:", error.response?.data || error.message);
+    throw error;
+  }
 }
-
 // ------------------------------------------------------
 // Rate limiters and helpers
 // ------------------------------------------------------
