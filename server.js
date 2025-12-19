@@ -1,20 +1,18 @@
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import crypto from "crypto";
 import cors from "cors";
-import dotenv from "dotenv";
 import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import geoip from "geoip-lite";
 import rateLimit from "express-rate-limit";
 import paypal from "@paypal/checkout-server-sdk";
-
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
-
-dotenv.config();
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -23,6 +21,14 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 });
+
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ Gmail Transporter Error:", error);
+  } else {
+    console.log("✅ Server is ready to send emails");
+  }
+})
 
 
 import { Resend } from "resend";
@@ -1284,12 +1290,15 @@ app.post(
       //   html: 
       // });
 
-      transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-          return console.log("Error:", error);
-        }
-        console.log("📧 OTP email sent via Resend:", otp);
-      });
+      const info = await transporter.sendMail(mailOptions);
+      console.log("OTP Email sent successfully! Message ID:", info.messageId);
+
+      // transporter.sendMail(mailOptions, (error, info) => {
+      //   if (error) {
+      //     return console.log("Error:", error);
+      //   }
+      //   console.log("📧 OTP email sent via Resend:", otp);
+      // });
      
       res.json({ success: true, message: "OTP sent" });
     } catch (err) {
