@@ -1,8 +1,7 @@
-import dotenv from "dotenv";
-dotenv.config();
 import express from "express";
 import crypto from "crypto";
 import cors from "cors";
+import dotenv from "dotenv";
 import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import geoip from "geoip-lite";
@@ -13,7 +12,9 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
 import bcrypt from "bcryptjs";
-import axios from "axios";
+
+dotenv.config();
+
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -103,47 +104,6 @@ function verifyJwt(req, res, next) {
 
   req.user = payload; // typically { email, iat, exp }
   next();
-}
-
-
-async function sendOtpEmail(email, otp) {
-  if (!process.env.BREVO_API_KEY) {
-    console.error("❌ BREVO_API_KEY is missing in Render environment variables.");
-    throw new Error("BREVO_API_KEY not configured");
-  }
-  console.log(process.env.BREVO_API_KEY);
-
-  try {
-    await axios.post(
-      "https://api.brevo.com/v3/smtp/email",
-      {
-        sender: {
-          name: "BlockSocialMedia",
-          email: "blocksocialmediaofficial@gmail.com",
-        },
-        to: [{ email }],
-        subject: "Block Social Media - PIN Reset Code",
-        htmlContent: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; border: 1px solid #ddd; border-radius: 10px;">
-            <h2 style="color: #4f46e5;">Verification Code</h2>
-            <p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">${otp}</p>
-            <p style="color: #666;">This code is valid for 2 minutes. If you did not request this, please ignore this email.</p>
-          </div>
-        `,
-      },
-      {
-        headers: {
-          "api-key": process.env.BREVO_API_KEY,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-      }
-    );
-    console.log(`✅ OTP sent successfully to: ${email}`);
-  } catch (error) {
-    console.error("❌ Brevo API Error:", error.response?.data || error.message);
-    throw error;
-  }
 }
 // ------------------------------------------------------
 // Rate limiters and helpers
@@ -1251,63 +1211,61 @@ app.post(
         purpose: "pin_reset",
       });
 
-      await sendOtpEmail(normalizedEmail, otp);
-
-      // await resend.emails.send({
-      //   from: "BlockSocialMedia <onboarding@resend.dev>",
-      //   to: normalizedEmail,
-      //   subject: "Block Social Media - PIN Reset Code",
-      //   html: `
-      //   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; background:#f3f4f6; padding:24px;">
-      //     <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:16px; box-shadow:0 10px 30px rgba(15,23,42,0.12); overflow:hidden;">
+      await resend.emails.send({
+        from: "BlockSocialMedia <onboarding@resend.dev>",
+        to: normalizedEmail,
+        subject: "Block Social Media - PIN Reset Code",
+        html: `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; background:#f3f4f6; padding:24px;">
+          <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:16px; box-shadow:0 10px 30px rgba(15,23,42,0.12); overflow:hidden;">
             
-      //       <!-- Header -->
-      //       <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:18px 24px; color:#ffffff;">
-      //         <h1 style="margin:0; font-size:20px; font-weight:600;">PIN Reset Code</h1>
-      //         <p style="margin:4px 0 0; font-size:13px; opacity:0.9;">
-      //           Pin Reset - BlockSocialMedia 
-      //         </p>
-      //       </div>
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed); padding:18px 24px; color:#ffffff;">
+              <h1 style="margin:0; font-size:20px; font-weight:600;">PIN Reset Code</h1>
+              <p style="margin:4px 0 0; font-size:13px; opacity:0.9;">
+                Pin Reset - BlockSocialMedia 
+              </p>
+            </div>
       
-      //       <!-- Content -->
-      //       <div style="padding:24px 24px 20px;">
-      //         <p style="margin:0 0 12px; font-size:14px; color:#111827;">
-      //           Use the following one-time code to reset your PIN.
-      //         </p>
+            <!-- Content -->
+            <div style="padding:24px 24px 20px;">
+              <p style="margin:0 0 12px; font-size:14px; color:#111827;">
+                Use the following one-time code to reset your PIN.
+              </p>
       
-      //         <!-- OTP Code -->
-      //         <div style="
-      //           margin:16px 0 18px;
-      //           padding:14px 20px;
-      //           background:#111827;
-      //           color:#f9fafb;
-      //           font-size:26px;
-      //           font-weight:700;
-      //           letter-spacing:8px;
-      //           text-align:center;
-      //           border-radius:12px;
-      //         ">
-      //           ${otp}
-      //         </div>
+              <!-- OTP Code -->
+              <div style="
+                margin:16px 0 18px;
+                padding:14px 20px;
+                background:#111827;
+                color:#f9fafb;
+                font-size:26px;
+                font-weight:700;
+                letter-spacing:8px;
+                text-align:center;
+                border-radius:12px;
+              ">
+                ${otp}
+              </div>
       
-      //         <p style="margin:0 0 8px; font-size:13px; color:#4b5563;">
-      //           This code is valid for <strong>2 minutes</strong>. For your security, do not share it with anyone.
-      //         </p>
-      //         <p style="margin:0 0 16px; font-size:13px; color:#6b7280;">
-      //           If you did not request a PIN reset, you can safely ignore this email. Your existing PIN will remain active.
-      //         </p>
+              <p style="margin:0 0 8px; font-size:13px; color:#4b5563;">
+                This code is valid for <strong>2 minutes</strong>. For your security, do not share it with anyone.
+              </p>
+              <p style="margin:0 0 16px; font-size:13px; color:#6b7280;">
+                If you did not request a PIN reset, you can safely ignore this email. Your existing PIN will remain active.
+              </p>
       
-      //         <hr style="border:none; border-top:1px solid #e5e7eb; margin:18px 0 14px;" />
+              <hr style="border:none; border-top:1px solid #e5e7eb; margin:18px 0 14px;" />
       
-      //         <p style="margin:0; font-size:11px; color:#9ca3af; line-height:1.5;">
-      //           Sent by <strong>BlockSocialMedia · SaveTime</strong><br/>
-      //           You are receiving this email because a PIN reset was requested from the Chrome extension.
-      //         </p>
-      //       </div>
-      //     </div>
-      //   </div>
-      // `,
-      // });
+              <p style="margin:0; font-size:11px; color:#9ca3af; line-height:1.5;">
+                Sent by <strong>BlockSocialMedia · SaveTime</strong><br/>
+                You are receiving this email because a PIN reset was requested from the Chrome extension.
+              </p>
+            </div>
+          </div>
+        </div>
+      `,
+      });
       console.log("📧 OTP email sent via Resend:", otp);
       res.json({ success: true, message: "OTP sent" });
     } catch (err) {
