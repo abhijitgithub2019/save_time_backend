@@ -1,40 +1,19 @@
-import dotenv from "dotenv";
-dotenv.config();
 import express from "express";
 import crypto from "crypto";
 import cors from "cors";
+import dotenv from "dotenv";
 import mongoose from "mongoose";
 import Razorpay from "razorpay";
 import geoip from "geoip-lite";
 import rateLimit from "express-rate-limit";
 import paypal from "@paypal/checkout-server-sdk";
+
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
 import bcrypt from "bcryptjs";
-import nodemailer from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // Must be false for port 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    // This helps if the server has issues verifying the certificate
-    rejectUnauthorized: false 
-  }
-});
-
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("❌ Gmail Transporter Error:", error);
-  } else {
-    console.log("✅ Server is ready to send emails");
-  }
-});
+dotenv.config();
 
 import { Resend } from "resend";
 
@@ -1232,8 +1211,8 @@ app.post(
         purpose: "pin_reset",
       });
 
-      const mailOptions = {
-        from: '"BlockSocialMedia" <blocksocialmediaofficial@gmail.com>',
+      await resend.emails.send({
+        from: "BlockSocialMedia <onboarding@resend.dev>",
         to: normalizedEmail,
         subject: "Block Social Media - PIN Reset Code",
         html: `
@@ -1286,25 +1265,8 @@ app.post(
           </div>
         </div>
       `,
-      };
-
-      // await resend.emails.send({
-      //   from: "BlockSocialMedia <onboarding@resend.dev>",
-      //   to: normalizedEmail,
-      //   subject: "Block Social Media - PIN Reset Code",
-      //   html:
-      // });
-
-      const info = await transporter.sendMail(mailOptions);
-      console.log("OTP Email sent successfully! Message ID:", info.messageId);
-
-      // transporter.sendMail(mailOptions, (error, info) => {
-      //   if (error) {
-      //     return console.log("Error:", error);
-      //   }
-      //   console.log("📧 OTP email sent via Resend:", otp);
-      // });
-
+      });
+      console.log("📧 OTP email sent via Resend:", otp);
       res.json({ success: true, message: "OTP sent" });
     } catch (err) {
       console.error("Send OTP error:", err);
