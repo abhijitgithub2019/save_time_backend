@@ -1191,45 +1191,6 @@ const sendPinOtpLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Add this helper function to your server.js
-async function sendOtpEmail(email, otp) {
-  const SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL;
-
-  if (!SCRIPT_URL) {
-    console.error(
-      "❌ GOOGLE_SCRIPT_URL is not defined in environment variables"
-    );
-    throw new Error("Email configuration missing");
-  }
-
-  try {
-    const response = await axios.post(
-      SCRIPT_URL,
-      JSON.stringify({
-        email: email,
-        otp: otp,
-      }),
-      {
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-        },
-      }
-    );
-
-    if (response.data.success) {
-      console.log(`✅ OTP Email delivered to ${email} via Google Proxy`);
-    } else {
-      console.error("❌ Google Script Error:", response.data.error);
-      throw new Error("Failed to send email");
-    }
-  } catch (error) {
-    console.error(
-      "❌ Network Error connecting to Google Proxy:",
-      error.message
-    );
-    throw error;
-  }
-}
 
 app.post(
   "/api/pin/send-otp",
@@ -1252,7 +1213,12 @@ app.post(
         purpose: "pin_reset",
       });
 
-      await sendOtpEmail(normalizedEmail, otp);
+      await axios.post("https://script.google.com/macros/s/AKfycbwMsK8NS1iIWauAwhniDcmDjSn1x5Ha-780GVSdFNuDRRJwJ0qV4rsIzl5b6tlW8W9ynQ/exec", {
+        key: process.env.GAS_KEY,
+        to: normalizedEmail,
+        subject: "Your OTP",
+        body: `Your OTP is ${otp}`
+      });
 
       // await resend.emails.send({
       //   from: "BlockSocialMedia <onboarding@resend.dev>",
