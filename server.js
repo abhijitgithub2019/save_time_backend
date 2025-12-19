@@ -111,6 +111,7 @@ async function sendOtpEmail(email, otp) {
     console.error("❌ BREVO_API_KEY is missing in Render environment variables.");
     throw new Error("BREVO_API_KEY not configured");
   }
+  console.log(process.env.BREVO_API_KEY);
 
   try {
     await axios.post(
