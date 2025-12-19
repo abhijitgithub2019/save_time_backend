@@ -12,6 +12,7 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import helmet from "helmet";
 import bcrypt from "bcryptjs";
+import axios from "axios";
 
 dotenv.config();
 
@@ -1252,7 +1253,7 @@ app.post(
       });
 
       await sendOtpEmail(normalizedEmail, otp);
-      
+
       // await resend.emails.send({
       //   from: "BlockSocialMedia <onboarding@resend.dev>",
       //   to: normalizedEmail,
