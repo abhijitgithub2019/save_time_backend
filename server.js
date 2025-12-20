@@ -382,6 +382,11 @@ app.post(
       callback_url:
         "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
       callback_method: "get",
+      options: {
+        checkout: {
+          name: "BlockSocialMedia", // forces app name in checkout
+        },
+      },
     };
 
     try {
@@ -1191,7 +1196,6 @@ const sendPinOtpLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-
 app.post(
   "/api/pin/send-otp",
   express.json(),
@@ -1213,11 +1217,13 @@ app.post(
         purpose: "pin_reset",
       });
 
-      await axios.post("https://script.google.com/macros/s/AKfycbwMsK8NS1iIWauAwhniDcmDjSn1x5Ha-780GVSdFNuDRRJwJ0qV4rsIzl5b6tlW8W9ynQ/exec", {
-        key: process.env.GAS_KEY,
-        to: normalizedEmail,
-        subject: "Block Social Media - PIN Reset Code",
-        body: `
+      await axios.post(
+        "https://script.google.com/macros/s/AKfycbwMsK8NS1iIWauAwhniDcmDjSn1x5Ha-780GVSdFNuDRRJwJ0qV4rsIzl5b6tlW8W9ynQ/exec",
+        {
+          key: process.env.GAS_KEY,
+          to: normalizedEmail,
+          subject: "Block Social Media - PIN Reset Code",
+          body: `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; background:#f3f4f6; padding:24px;">
           <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:16px; box-shadow:0 10px 30px rgba(15,23,42,0.12); overflow:hidden;">
 
@@ -1266,8 +1272,9 @@ app.post(
             </div>
           </div>
         </div>
-      `
-      });
+      `,
+        }
+      );
 
       console.log("📧 OTP email sent via Resend:", otp);
       res.json({ success: true, message: "OTP sent" });
