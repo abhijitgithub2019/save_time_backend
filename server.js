@@ -595,20 +595,30 @@ app.get("/api/check-emergency-status", async (req, res) => {
 // ------------------------------------------------------
 // Country detection
 // ------------------------------------------------------
+// app.get("/api/country", (req, res) => {
+//   const ip = req.headers["x-forwarded-for"]?.split(",")[0];
+//   const geo = geoip.lookup(ip);
+
+//   if (geo && geo.country) {
+//     return res.json({
+//       country_code: geo.country,
+//       country_name: geo.city || "Unknown",
+//     });
+//   }
+
+//   return res.json({
+//     country_code: "IN",
+//     country_name: "India",
+//   });
+// });
+
 app.get("/api/country", (req, res) => {
-  const ip = req.headers["x-forwarded-for"]?.split(",")[0];
+  const ip = req.ip;
   const geo = geoip.lookup(ip);
 
-  if (geo && geo.country) {
-    return res.json({
-      country_code: geo.country,
-      country_name: geo.city || "Unknown",
-    });
-  }
-
   return res.json({
-    country_code: "IN",
-    country_name: "India",
+    country_code: geo?.country || "UNKNOWN",
+    source: geo ? "ip" : "fallback",
   });
 });
 
