@@ -563,26 +563,11 @@ app.get("/health", (req, res) => {
 // ------------------------------------------------------
 // Check emergency payment status
 // ------------------------------------------------------
-app.get("/api/check-emergency-status", async (req, res) => {
-  const email = req.query.email?.toLowerCase().trim();
-
-  if (!email) return res.json({ status: "missing_email" });
-
-  const record = await EmergencyUnlock.findOne({ email });
-
-  if (!record) {
-    return res.json({ status: "pending" });
-  }
-
-  return res.json({ status: "paid", amount: record.amount });
-});
-
 // app.get("/api/check-emergency-status", async (req, res) => {
 //   const email = req.query.email?.toLowerCase().trim();
 
 //   if (!email) return res.json({ status: "missing_email" });
 
-//   // Look up user emergency unlock record
 //   const record = await EmergencyUnlock.findOne({ email });
 
 //   if (!record) {
@@ -590,26 +575,6 @@ app.get("/api/check-emergency-status", async (req, res) => {
 //   }
 
 //   return res.json({ status: "paid", amount: record.amount });
-// });
-
-// ------------------------------------------------------
-// Country detection
-// ------------------------------------------------------
-// app.get("/api/country", (req, res) => {
-//   const ip = req.headers["x-forwarded-for"]?.split(",")[0];
-//   const geo = geoip.lookup(ip);
-
-//   if (geo && geo.country) {
-//     return res.json({
-//       country_code: geo.country,
-//       country_name: geo.city || "Unknown",
-//     });
-//   }
-
-//   return res.json({
-//     country_code: "IN",
-//     country_name: "India",
-//   });
 // });
 
 app.get("/api/country", (req, res) => {
@@ -625,7 +590,7 @@ app.get("/api/country", (req, res) => {
 // ------------------------------------------------------
 // Delete emergency payment record
 // ------------------------------------------------------
-app.get("/api/delete-emergency-payment", async (req, res) => {
+app.get("/api/check-emergency-status", async (req, res) => {
   const email = req.query.email?.toLowerCase().trim();
 
   if (!email) {
@@ -633,20 +598,31 @@ app.get("/api/delete-emergency-payment", async (req, res) => {
   }
 
   try {
-    const result = await EmergencyUnlock.deleteOne({
-      email: email,
+    const record = await EmergencyUnlock.findOne({
+      email,
       amount: 2900,
     });
 
-    if (result.deletedCount > 0) {
-      console.log(`🗑️ Emergency Unlock record deleted for ${email}`);
-      return res.json({ status: "deleted" });
+    if (!record) {
+      return res.json({ status: "not_found" });
     }
 
-    return res.json({ status: "not_found" });
+    if (record.status === "paid") {
+      // 🔥 DELETE AFTER SUCCESS
+      await EmergencyUnlock.deleteOne({
+        email,
+        amount: 2900,
+      });
+
+      console.log(`🗑️ Emergency Unlock consumed for ${email}`);
+
+      return res.json({ status: "paid" });
+    }
+
+    return res.json({ status: "pending" });
   } catch (err) {
-    console.error("❌ Error deleting emergency record:", err);
-    return res.status(500).json({ error: "Database delete error" });
+    console.error("❌ Emergency status check error:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
