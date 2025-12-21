@@ -544,8 +544,10 @@ app.get("/api/check-payment-status", verifyJwt, async (req, res) => {
       return res.json({ status: "pending" });
     }
 
-    if (user.expiresAt && user.expiresAt < Date.now()) {
-      return res.json({ status: "expired" });
+    const isExpired = user.expiresAt && new Date(user.expiresAt) < new Date();
+
+    if (isExpired) {
+      return res.json({ status: "expired", expiresAt: user.expiresAt });
     }
 
     return res.json({ status: "paid", expiresAt: user.expiresAt });
