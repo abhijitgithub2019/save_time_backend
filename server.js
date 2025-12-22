@@ -131,7 +131,7 @@ const createPaymentLimiter = rateLimit({
 const PaidUserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, index: true },
   paidAt: { type: Date, default: Date.now },
-  expiresAt: { type: Date },
+  expiresAt: { type: Date, index: { expires: 0 } },
   amount: { type: Number, required: true },
 });
 
