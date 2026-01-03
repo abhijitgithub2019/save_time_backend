@@ -1400,7 +1400,7 @@ app.post("/api/pin/verify", express.json(), verifyJwt, async (req, res) => {
 // DELETE PIN on logout
 app.post("/api/pinlogout", express.json(), verifyJwt, async (req, res) => {
   try {
-    const email = req.user?.email;
+    const { email } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: "Missing email" });
