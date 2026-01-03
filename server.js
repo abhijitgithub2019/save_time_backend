@@ -1398,18 +1398,15 @@ app.post("/api/pin/verify", express.json(), verifyJwt, async (req, res) => {
 });
 
 // DELETE PIN on logout
-app.post("/api/pinlogout", express.json(), verifyJwt, async (req, res) => {
+app.post("/api/pinlogout", verifyJwt, async (req, res) => {
   try {
-    const { email } = req.body;
-    console.log("email", req, email);
+    const email = req.user?.email;
+
     if (!email) {
-      return res.status(400).json({ error: "Missing email" });
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Delete PIN settings from database
     await PinSettings.deleteOne({ email });
-
-    // Optional: Delete any pending OTPs
     await Otp.deleteMany({ email, purpose: "pinreset" });
 
     console.log("PIN deleted for user on logout:", email);
