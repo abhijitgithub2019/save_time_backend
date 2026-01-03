@@ -1397,6 +1397,33 @@ app.post("/api/pin/verify", express.json(), verifyJwt, async (req, res) => {
   }
 });
 
+// DELETE PIN on logout
+app.post("/api/pinlogout", express.json(), verifyJwt, async (req, res) => {
+  try {
+    const email = req.user?.email;
+
+    if (!email) {
+      return res.status(400).json({ error: "Missing email" });
+    }
+
+    // Delete PIN settings from database
+    await PinSettings.deleteOne({ email });
+
+    // Optional: Delete any pending OTPs
+    await Otp.deleteMany({ email, purpose: "pinreset" });
+
+    console.log("PIN deleted for user on logout:", email);
+
+    return res.json({
+      success: true,
+      message: "PIN cleared successfully",
+    });
+  } catch (err) {
+    console.error("PIN logout error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
