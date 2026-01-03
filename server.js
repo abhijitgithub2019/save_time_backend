@@ -1401,7 +1401,7 @@ app.post("/api/pin/verify", express.json(), verifyJwt, async (req, res) => {
 app.post("/api/pinlogout", express.json(), verifyJwt, async (req, res) => {
   try {
     const { email } = req.body;
-
+    console.log("email", req, email);
     if (!email) {
       return res.status(400).json({ error: "Missing email" });
     }
