@@ -223,7 +223,7 @@ const PinSettings = mongoose.model("PinSettings", PinSettingsSchema);
 function createPaypalClient() {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_SECRET;
-  const environment = new paypal.core.SandboxEnvironment(
+  const environment = new paypal.core.LiveEnvironment(
     clientId,
     clientSecret
   );
