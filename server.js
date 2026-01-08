@@ -227,6 +227,8 @@ function createPaypalClient() {
     clientId,
     clientSecret
   );
+
+  console.log("clientId", clientId, clientSecret);
   return new paypal.core.PayPalHttpClient(environment);
 }
 
@@ -584,7 +586,7 @@ app.get("/api/country", (req, res) => {
   const geo = geoip.lookup(ip);
 
   return res.json({
-    country_code: geo?.country || "UNKNOWN",
+    country_code: geo?.country || "You",
     source: geo ? "ip" : "fallback",
   });
 });
