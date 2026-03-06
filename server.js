@@ -223,10 +223,7 @@ const PinSettings = mongoose.model("PinSettings", PinSettingsSchema);
 function createPaypalClient() {
   const clientId = process.env.PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_SECRET;
-  const environment = new paypal.core.LiveEnvironment(
-    clientId,
-    clientSecret
-  );
+  const environment = new paypal.core.LiveEnvironment(clientId, clientSecret);
 
   console.log("clientId", clientId, clientSecret);
   return new paypal.core.PayPalHttpClient(environment);
@@ -245,27 +242,41 @@ app.get("/", (req, res) => {
 // New: Exchange Google access_token for JWT
 // ------------------------------------------------------
 app.post("/api/auth/google", express.json(), async (req, res) => {
-  const { access_token } = req.body;
+  const { id_token, access_token } = req.body;
   if (!access_token) {
     return res.status(400).json({ error: "Missing access_token" });
   }
 
   try {
-    // Validate token with Google
-    // For implicit flow tokens, tokeninfo is a light-weight verification
-    const tokenInfo = await googleClient.getTokenInfo(access_token);
+    let email, name;
+    if (id_token) {
+      // Mobile flow — verify id_token
+      const ticket = await googleClient.verifyIdToken({
+        idToken: id_token,
+        audience: GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      email = payload.email;
+      name = payload.name || email;
+    } else if (access_token) {
+      // Validate token with Google
+      // For implicit flow tokens, tokeninfo is a light-weight verification
+      const tokenInfo = await googleClient.getTokenInfo(access_token);
 
-    // Ensure token audience matches your client ID
-    if (!tokenInfo || tokenInfo.aud !== GOOGLE_CLIENT_ID) {
-      console.warn(
-        "Google token audience mismatch or invalid token:",
-        tokenInfo
-      );
-      return res.status(401).json({ error: "Invalid token" });
+      // Ensure token audience matches your client ID
+      if (!tokenInfo || tokenInfo.aud !== GOOGLE_CLIENT_ID) {
+        console.warn(
+          "Google token audience mismatch or invalid token:",
+          tokenInfo
+        );
+        return res.status(401).json({ error: "Invalid token" });
+      }
+
+      email = tokenInfo.email;
+      name = tokenInfo.email || tokenInfo.sub || "unknown";
+    } else {
+      return res.status(400).json({ error: "Missing Google token" });
     }
-
-    const email = tokenInfo.email;
-    const name = tokenInfo.email || tokenInfo.sub || "unknown";
 
     // Sign JWT for extension to use
     const jwtToken = signJwt({ email });
