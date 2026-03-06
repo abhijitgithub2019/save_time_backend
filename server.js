@@ -243,9 +243,7 @@ app.get("/", (req, res) => {
 // ------------------------------------------------------
 app.post("/api/auth/google", express.json(), async (req, res) => {
   const { id_token, access_token } = req.body;
-  if (!access_token) {
-    return res.status(400).json({ error: "Missing access_token" });
-  }
+  
 
   try {
     let email, name;
