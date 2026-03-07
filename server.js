@@ -478,13 +478,6 @@ app.get("/", (req, res) => {
   res.send("Backend is running ✔️");
 });
 
-function generateFakeContact() {
-  const starts = ["6", "7", "8", "9"];
-  const first = starts[Math.floor(Math.random() * starts.length)];
-  const rest = Math.floor(100000000 + Math.random() * 900000000).toString();
-  return first + rest;
-}
-
 // ------------------------------------------------------
 // Payment link creation (Razorpay) - uses express.json() only on route
 // ------------------------------------------------------
@@ -504,7 +497,7 @@ app.post(
 
     const expireInSeconds = 25 * 60; // 25 minutes
     const expireTime = Math.floor(Date.now() / 1000) + expireInSeconds;
-    const contact = phone || generateFakeContact();
+
     console.log(
       `[Link Creation] Calculated Expire Time (UNIX): ${expireTime} (${expireInSeconds} seconds from now)`
     );
@@ -517,41 +510,17 @@ app.post(
       description: "Premium Feature Access",
       customer: {
         email: email,
-        contact: contact,
-        name: "BlockSocialMedia User",
+        contact: phone || undefined,
       },
-
-      notify: {
-        email: false,
-        sms: false,
-      },
-
-      reminder_enable: false,
-
+      notify: { email: true, sms: false },
+      reminder_enable: true,
       callback_url:
         callback_url ||
-        "https://save-time-backend.onrender.com/payment-callback",
-
+        "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
       callback_method: "get",
-
       options: {
         checkout: {
-          name: "BlockSocialMedia",
-
-          prefill: {
-            email: email,
-            contact: contact,
-          },
-
-          readonly: {
-            email: true,
-            contact: true,
-          },
-
-          hidden: {
-            email: true,
-            contact: true,
-          },
+          name: "BlockSocialMedia", // forces app name in checkout
         },
       },
     };
