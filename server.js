@@ -510,7 +510,7 @@ app.post(
       description: "Premium Feature Access",
       customer: {
         email: email,
-        contact: phone || undefined,
+        contact: phone || "" 
       },
       notify: { email: true, sms: false },
       reminder_enable: true,
