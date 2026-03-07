@@ -517,13 +517,10 @@ app.post(
         callback_url ||
         "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
       callback_method: "get",
-      prefill: {
-        contact: "9999999999",   // auto-filled mobile
-        email: email
-      },    
       options: {
         checkout: {
           name: "BlockSocialMedia", // forces app name in checkout
+          email: email
         },
       },
     };
