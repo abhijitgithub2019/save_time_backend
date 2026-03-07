@@ -1687,88 +1687,77 @@ app.get("/pay", (req, res) => {
   const safePlan = plan || "monthly";
   const safeEmail = String(email);
   const safeOrderId = String(order_id);
-  const safeAmount = String(amountPaise);
   const razorpayKey = process.env.RAZORPAY_KEY_ID;
 
+  // We use Razorpay's standard form-based redirect — no modal, no popup.
+  // This works in ANY WebView because it's just a plain HTML form POST.
   res.send(`<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
   <title>Secure Payment</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { margin:0; padding:0; box-sizing:border-box; }
     body {
-      background: #f5f5f5;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      min-height: 100vh;
+      background:#f5f5f5;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      min-height:100vh;
     }
     .header {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      padding: 20px;
-      text-align: center;
-      color: white;
+      background:linear-gradient(135deg,#667eea,#764ba2);
+      padding:20px; text-align:center; color:white;
     }
-    .header h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-    .header p { font-size: 13px; opacity: 0.85; }
+    .header h2 { font-size:18px; font-weight:700; margin-bottom:4px; }
+    .header p  { font-size:13px; opacity:0.85; }
     .amount-box {
-      background: white;
-      margin: 16px;
-      border-radius: 14px;
-      padding: 20px;
-      text-align: center;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      background:white; margin:16px; border-radius:14px;
+      padding:20px; text-align:center;
+      box-shadow:0 2px 12px rgba(0,0,0,0.08);
     }
-    .amount-label { font-size: 12px; color: #888; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
-    .amount-value { font-size: 36px; font-weight: 800; color: #1a1a2e; margin-top: 4px; }
+    .amount-label { font-size:12px; color:#888; font-weight:600; letter-spacing:1px; text-transform:uppercase; }
+    .amount-value { font-size:36px; font-weight:800; color:#1a1a2e; margin-top:4px; }
     .form-box {
-      background: white;
-      margin: 0 16px 16px;
-      border-radius: 14px;
-      padding: 20px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      background:white; margin:0 16px 16px; border-radius:14px;
+      padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.08);
     }
-    .form-box h3 { font-size: 14px; font-weight: 700; color: #333; margin-bottom: 16px; }
-    .field { margin-bottom: 14px; }
-    .field label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 6px; }
+    .form-box h3 { font-size:14px; font-weight:700; color:#333; margin-bottom:16px; }
+    .field { margin-bottom:14px; }
+    .field label { display:block; font-size:12px; font-weight:600; color:#666; margin-bottom:6px; }
     .field input {
-      width: 100%; padding: 12px 14px;
-      border: 1.5px solid #e0e0e0; border-radius: 10px;
-      font-size: 15px; outline: none; color: #1a1a2e;
-      background: #fafafa;
+      width:100%; padding:12px 14px;
+      border:1.5px solid #e0e0e0; border-radius:10px;
+      font-size:15px; outline:none; color:#1a1a2e; background:#fafafa;
     }
-    .field input:focus { border-color: #667eea; background: white; }
-    .field input[readonly] { background: #f0f0f0; color: #555; }
+    .field input:focus { border-color:#667eea; background:white; }
+    .field input[readonly] { background:#f0f0f0; color:#555; }
     .pay-btn {
-      width: 100%; padding: 16px;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: white; border: none; border-radius: 12px;
-      font-size: 16px; font-weight: 800; cursor: pointer;
-      margin-top: 8px;
+      width:100%; padding:16px;
+      background:linear-gradient(135deg,#667eea,#764ba2);
+      color:white; border:none; border-radius:12px;
+      font-size:16px; font-weight:800; cursor:pointer; margin-top:8px;
     }
-    .pay-btn:disabled { opacity: 0.6; }
-    .secure-note { text-align: center; font-size: 11px; color: #aaa; margin: 12px 16px 24px; }
+    .pay-btn:disabled { opacity:0.6; }
+    .secure-note { text-align:center; font-size:11px; color:#aaa; margin:12px 16px 24px; }
+    .error-msg { color:#e53935; font-size:12px; margin-top:4px; display:none; }
     .loading-overlay {
-      display: none; position: fixed; inset: 0;
-      background: rgba(13,13,26,0.85);
-      align-items: center; justify-content: center;
-      flex-direction: column; gap: 14px; z-index: 999;
+      display:none; position:fixed; inset:0;
+      background:rgba(13,13,26,0.9);
+      align-items:center; justify-content:center;
+      flex-direction:column; gap:14px; z-index:999;
     }
-    .loading-overlay.show { display: flex; }
+    .loading-overlay.show { display:flex; }
     .spinner {
-      width: 44px; height: 44px;
-      border: 3px solid rgba(102,126,234,0.3);
-      border-top-color: #667eea;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      width:44px; height:44px;
+      border:3px solid rgba(102,126,234,0.3);
+      border-top-color:#667eea; border-radius:50%;
+      animation:spin 0.8s linear infinite;
     }
-    .loading-overlay p { color: rgba(255,255,255,0.7); font-size: 14px; font-weight: 500; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .error-msg { color: #e53935; font-size: 12px; margin-top: 4px; display: none; }
+    .loading-overlay p { color:rgba(255,255,255,0.7); font-size:14px; font-weight:500; }
+    @keyframes spin { to { transform:rotate(360deg); } }
   </style>
 </head>
 <body>
-
   <div class="header">
     <h2>BlockSocialMedia</h2>
     <p>Premium Access · Secure Checkout</p>
@@ -1783,82 +1772,72 @@ app.get("/pay", (req, res) => {
     <h3>Payment Details</h3>
     <div class="field">
       <label>Email Address</label>
-      <input type="email" id="email-field" value="${safeEmail}" readonly />
+      <input type="email" id="f-email" value="${safeEmail}" readonly/>
     </div>
     <div class="field">
       <label>Mobile Number</label>
-      <input type="tel" id="phone-field" placeholder="Enter 10-digit mobile number" maxlength="10" inputmode="numeric" />
+      <input type="tel" id="f-phone" placeholder="Enter 10-digit mobile number"
+             maxlength="10" inputmode="numeric" autocomplete="tel"/>
       <div class="error-msg" id="phone-error">Please enter a valid 10-digit mobile number</div>
     </div>
-    <button class="pay-btn" id="pay-btn" onclick="startPayment()">Pay Now →</button>
+    <button class="pay-btn" id="pay-btn" onclick="handlePay()">Pay Now →</button>
   </div>
-
   <div class="secure-note">🔒 Secured by Razorpay · 256-bit SSL encryption</div>
 
   <div class="loading-overlay" id="loading">
     <div class="spinner"></div>
-    <p>Processing payment…</p>
+    <p id="loading-text">Opening payment…</p>
   </div>
 
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
-    function startPayment() {
-      var phone = document.getElementById("phone-field").value.trim();
-      var errorEl = document.getElementById("phone-error");
+    function handlePay() {
+      var phone = document.getElementById('f-phone').value.trim();
+      var errEl = document.getElementById('phone-error');
 
       if (!phone || phone.length !== 10 || !/^[6-9][0-9]{9}$/.test(phone)) {
-        errorEl.style.display = "block";
-        document.getElementById("phone-field").focus();
+        errEl.style.display = 'block';
+        document.getElementById('f-phone').focus();
         return;
       }
-      errorEl.style.display = "none";
-      document.getElementById("pay-btn").disabled = true;
-      document.getElementById("loading").classList.add("show");
+      errEl.style.display = 'none';
+      document.getElementById('pay-btn').disabled = true;
+      document.getElementById('loading').classList.add('show');
+      document.getElementById('loading-text').textContent = 'Opening payment…';
 
-      var options = {
-        key: "${razorpayKey}",
-        order_id: "${safeOrderId}",
-        amount: "${safeAmount}",
-        currency: "INR",
-        name: "BlockSocialMedia",
-        description: "Premium Access",
-        prefill: {
-          email: "${safeEmail}",
-          contact: phone,
-        },
-        theme: { color: "#667eea" },
-        modal: {
-          ondismiss: function () {
-            document.getElementById("pay-btn").disabled = false;
-            document.getElementById("loading").classList.remove("show");
-          },
-        },
-        handler: function (response) {
-          document.getElementById("loading").classList.add("show");
-          window.location.href =
-            "${callbackBase}" +
-            "?status=paid" +
-            "&razorpay_payment_id=" + encodeURIComponent(response.razorpay_payment_id) +
-            "&razorpay_order_id=" + encodeURIComponent(response.razorpay_order_id) +
-            "&razorpay_signature=" + encodeURIComponent(response.razorpay_signature) +
-            "&email=" + encodeURIComponent("${safeEmail}") +
-            "&plan=" + encodeURIComponent("${safePlan}");
-        },
+      // Build Razorpay standard checkout form — works in ALL WebViews
+      // No modal, no popup — just a plain HTML form POST redirect
+      var form = document.createElement('form');
+      form.method = 'POST';
+      form.action = 'https://api.razorpay.com/v1/checkout/embedded';
+
+      var fields = {
+        key_id:      '${razorpayKey}',
+        order_id:    '${safeOrderId}',
+        name:        'BlockSocialMedia',
+        description: 'Premium Access',
+        prefill_email:   '${safeEmail}',
+        prefill_contact: phone,
+        theme_color: '#667eea',
+        callback_url: '${callbackBase}?email=${safeEmail}&plan=${safePlan}',
+        cancel_url:   '${callbackBase}?status=cancelled',
       };
 
-      var rzp = new Razorpay(options);
-      rzp.on("payment.failed", function (response) {
-        document.getElementById("pay-btn").disabled = false;
-        document.getElementById("loading").classList.remove("show");
-        alert("Payment failed: " + (response.error.description || "Please try again"));
+      Object.keys(fields).forEach(function(k) {
+        var input = document.createElement('input');
+        input.type  = 'hidden';
+        input.name  = k;
+        input.value = fields[k];
+        form.appendChild(input);
       });
 
-      rzp.open();
+      document.body.appendChild(form);
+      form.submit();
     }
 
+    // Auto-focus phone
     setTimeout(function() {
-      document.getElementById("phone-field").focus();
-    }, 500);
+      document.getElementById('f-phone').focus();
+    }, 400);
   </script>
 </body>
 </html>`);
