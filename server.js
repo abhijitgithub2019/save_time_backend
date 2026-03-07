@@ -520,7 +520,13 @@ app.post(
       callback_method: "get",
       options: {
         checkout: {
-          name: "BlockSocialMedia", // forces app name in checkout
+          name: "BlockSocialMedia",
+          hidden: {
+            contact: true,
+          },
+          readonly: {
+            contact: true,
+          },
         },
       },
     };
