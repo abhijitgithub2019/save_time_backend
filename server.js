@@ -1682,6 +1682,13 @@ app.get("/pay", (req, res) => {
 
   const callbackBase =
     "https://save-time-backend.onrender.com/payment-callback";
+  const amountPaise = parseInt(amount);
+  const displayAmount = "₹" + (amountPaise / 100).toFixed(0);
+  const safePlan = plan || "monthly";
+  const safeEmail = String(email);
+  const safeOrderId = String(order_id);
+  const safeAmount = String(amountPaise);
+  const razorpayKey = process.env.RAZORPAY_KEY_ID;
 
   res.send(`<!DOCTYPE html>
 <html>
@@ -1729,23 +1736,18 @@ app.get("/pay", (req, res) => {
       border: 1.5px solid #e0e0e0; border-radius: 10px;
       font-size: 15px; outline: none; color: #1a1a2e;
       background: #fafafa;
-      transition: border-color 0.2s;
     }
     .field input:focus { border-color: #667eea; background: white; }
-    .field input[readonly] { background: #f0f0f0; color: #888; }
+    .field input[readonly] { background: #f0f0f0; color: #555; }
     .pay-btn {
       width: 100%; padding: 16px;
       background: linear-gradient(135deg, #667eea, #764ba2);
       color: white; border: none; border-radius: 12px;
       font-size: 16px; font-weight: 800; cursor: pointer;
-      margin-top: 8px; letter-spacing: 0.3px;
+      margin-top: 8px;
     }
-    .pay-btn:active { opacity: 0.9; }
     .pay-btn:disabled { opacity: 0.6; }
-    .secure-note {
-      text-align: center; font-size: 11px; color: #aaa;
-      margin: 12px 16px 24px; font-weight: 500;
-    }
+    .secure-note { text-align: center; font-size: 11px; color: #aaa; margin: 12px 16px 24px; }
     .loading-overlay {
       display: none; position: fixed; inset: 0;
       background: rgba(13,13,26,0.85);
@@ -1774,26 +1776,21 @@ app.get("/pay", (req, res) => {
 
   <div class="amount-box">
     <div class="amount-label">Total Amount</div>
-    <div class="amount-value" id="display-amount">Loading…</div>
+    <div class="amount-value">${displayAmount}</div>
   </div>
 
   <div class="form-box">
     <h3>Payment Details</h3>
-
     <div class="field">
       <label>Email Address</label>
-      <input type="email" id="email-field" value="${email}" readonly />
+      <input type="email" id="email-field" value="${safeEmail}" readonly />
     </div>
-
     <div class="field">
       <label>Mobile Number</label>
       <input type="tel" id="phone-field" placeholder="Enter 10-digit mobile number" maxlength="10" inputmode="numeric" />
       <div class="error-msg" id="phone-error">Please enter a valid 10-digit mobile number</div>
     </div>
-
-    <button class="pay-btn" id="pay-btn" onclick="startPayment()">
-      Pay Now →
-    </button>
+    <button class="pay-btn" id="pay-btn" onclick="startPayment()">Pay Now →</button>
   </div>
 
   <div class="secure-note">🔒 Secured by Razorpay · 256-bit SSL encryption</div>
@@ -1805,35 +1802,28 @@ app.get("/pay", (req, res) => {
 
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
-    // Display formatted amount
-    var amountPaise = parseInt("${amount}");
-    document.getElementById("display-amount").textContent =
-      "₹" + (amountPaise / 100).toFixed(0);
-
     function startPayment() {
       var phone = document.getElementById("phone-field").value.trim();
       var errorEl = document.getElementById("phone-error");
 
-      // Validate phone
       if (!phone || phone.length !== 10 || !/^[6-9][0-9]{9}$/.test(phone)) {
         errorEl.style.display = "block";
         document.getElementById("phone-field").focus();
         return;
       }
       errorEl.style.display = "none";
-
       document.getElementById("pay-btn").disabled = true;
       document.getElementById("loading").classList.add("show");
 
       var options = {
-        key: "${process.env.RAZORPAY_KEY_ID}",
-        order_id: "${order_id}",
-        amount: "${amount}",
+        key: "${razorpayKey}",
+        order_id: "${safeOrderId}",
+        amount: "${safeAmount}",
         currency: "INR",
         name: "BlockSocialMedia",
         description: "Premium Access",
         prefill: {
-          email: "${email}",
+          email: "${safeEmail}",
           contact: phone,
         },
         theme: { color: "#667eea" },
@@ -1842,8 +1832,6 @@ app.get("/pay", (req, res) => {
             document.getElementById("pay-btn").disabled = false;
             document.getElementById("loading").classList.remove("show");
           },
-          confirm_close: false,
-          escape: true,
         },
         handler: function (response) {
           document.getElementById("loading").classList.add("show");
@@ -1853,8 +1841,8 @@ app.get("/pay", (req, res) => {
             "&razorpay_payment_id=" + encodeURIComponent(response.razorpay_payment_id) +
             "&razorpay_order_id=" + encodeURIComponent(response.razorpay_order_id) +
             "&razorpay_signature=" + encodeURIComponent(response.razorpay_signature) +
-            "&email=" + encodeURIComponent("${email}") +
-            "&plan=" + encodeURIComponent("${plan || "monthly"}");
+            "&email=" + encodeURIComponent("${safeEmail}") +
+            "&plan=" + encodeURIComponent("${safePlan}");
         },
       };
 
@@ -1868,7 +1856,6 @@ app.get("/pay", (req, res) => {
       rzp.open();
     }
 
-    // Auto-focus phone field
     setTimeout(function() {
       document.getElementById("phone-field").focus();
     }, 500);
