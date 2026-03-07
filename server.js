@@ -1671,6 +1671,8 @@ app.get("/payment-callback", async (req, res) => {
 
 // ADD THIS before app.listen() in your backend
 
+// REPLACE your existing /pay route with this
+
 app.get("/pay", (req, res) => {
   const { order_id, amount, email, plan } = req.query;
 
@@ -1687,37 +1689,142 @@ app.get("/pay", (req, res) => {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>Secure Payment</title>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #0d0d1a;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
+      background: #f5f5f5;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
     }
-    .loader { text-align: center; color: rgba(255,255,255,0.6); }
+    .header {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      padding: 20px;
+      text-align: center;
+      color: white;
+    }
+    .header h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .header p { font-size: 13px; opacity: 0.85; }
+    .amount-box {
+      background: white;
+      margin: 16px;
+      border-radius: 14px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    .amount-label { font-size: 12px; color: #888; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+    .amount-value { font-size: 36px; font-weight: 800; color: #1a1a2e; margin-top: 4px; }
+    .form-box {
+      background: white;
+      margin: 0 16px 16px;
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    .form-box h3 { font-size: 14px; font-weight: 700; color: #333; margin-bottom: 16px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 6px; }
+    .field input {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid #e0e0e0; border-radius: 10px;
+      font-size: 15px; outline: none; color: #1a1a2e;
+      background: #fafafa;
+      transition: border-color 0.2s;
+    }
+    .field input:focus { border-color: #667eea; background: white; }
+    .field input[readonly] { background: #f0f0f0; color: #888; }
+    .pay-btn {
+      width: 100%; padding: 16px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white; border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 800; cursor: pointer;
+      margin-top: 8px; letter-spacing: 0.3px;
+    }
+    .pay-btn:active { opacity: 0.9; }
+    .pay-btn:disabled { opacity: 0.6; }
+    .secure-note {
+      text-align: center; font-size: 11px; color: #aaa;
+      margin: 12px 16px 24px; font-weight: 500;
+    }
+    .loading-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(13,13,26,0.85);
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px; z-index: 999;
+    }
+    .loading-overlay.show { display: flex; }
     .spinner {
-      width: 40px; height: 40px;
-      border: 3px solid rgba(102,126,234,0.2);
+      width: 44px; height: 44px;
+      border: 3px solid rgba(102,126,234,0.3);
       border-top-color: #667eea;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
-      margin: 0 auto 16px;
     }
+    .loading-overlay p { color: rgba(255,255,255,0.7); font-size: 14px; font-weight: 500; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .loader p { font-size: 14px; font-weight: 500; }
+    .error-msg { color: #e53935; font-size: 12px; margin-top: 4px; display: none; }
   </style>
 </head>
 <body>
-  <div class="loader">
-    <div class="spinner"></div>
-    <p>Opening secure checkout…</p>
+
+  <div class="header">
+    <h2>BlockSocialMedia</h2>
+    <p>Premium Access · Secure Checkout</p>
   </div>
+
+  <div class="amount-box">
+    <div class="amount-label">Total Amount</div>
+    <div class="amount-value" id="display-amount">Loading…</div>
+  </div>
+
+  <div class="form-box">
+    <h3>Payment Details</h3>
+
+    <div class="field">
+      <label>Email Address</label>
+      <input type="email" id="email-field" value="${email}" readonly />
+    </div>
+
+    <div class="field">
+      <label>Mobile Number</label>
+      <input type="tel" id="phone-field" placeholder="Enter 10-digit mobile number" maxlength="10" inputmode="numeric" />
+      <div class="error-msg" id="phone-error">Please enter a valid 10-digit mobile number</div>
+    </div>
+
+    <button class="pay-btn" id="pay-btn" onclick="startPayment()">
+      Pay Now →
+    </button>
+  </div>
+
+  <div class="secure-note">🔒 Secured by Razorpay · 256-bit SSL encryption</div>
+
+  <div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <p>Processing payment…</p>
+  </div>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
-    window.onload = function () {
+    // Display formatted amount
+    var amountPaise = parseInt("${amount}");
+    document.getElementById("display-amount").textContent =
+      "₹" + (amountPaise / 100).toFixed(0);
+
+    function startPayment() {
+      var phone = document.getElementById("phone-field").value.trim();
+      var errorEl = document.getElementById("phone-error");
+
+      // Validate phone
+      if (!phone || phone.length !== 10 || !/^[6-9][0-9]{9}$/.test(phone)) {
+        errorEl.style.display = "block";
+        document.getElementById("phone-field").focus();
+        return;
+      }
+      errorEl.style.display = "none";
+
+      document.getElementById("pay-btn").disabled = true;
+      document.getElementById("loading").classList.add("show");
+
       var options = {
         key: "${process.env.RAZORPAY_KEY_ID}",
         order_id: "${order_id}",
@@ -1727,18 +1834,19 @@ app.get("/pay", (req, res) => {
         description: "Premium Access",
         prefill: {
           email: "${email}",
-          contact: "",
+          contact: phone,
         },
         theme: { color: "#667eea" },
         modal: {
           ondismiss: function () {
-            window.location.href = "${callbackBase}?status=cancelled";
+            document.getElementById("pay-btn").disabled = false;
+            document.getElementById("loading").classList.remove("show");
           },
           confirm_close: false,
           escape: true,
-          animation: true,
         },
         handler: function (response) {
+          document.getElementById("loading").classList.add("show");
           window.location.href =
             "${callbackBase}" +
             "?status=paid" +
@@ -1751,20 +1859,23 @@ app.get("/pay", (req, res) => {
       };
 
       var rzp = new Razorpay(options);
-
       rzp.on("payment.failed", function (response) {
-        window.location.href =
-          "${callbackBase}?status=failed&error=" +
-          encodeURIComponent(response.error.description || "Payment failed");
+        document.getElementById("pay-btn").disabled = false;
+        document.getElementById("loading").classList.remove("show");
+        alert("Payment failed: " + (response.error.description || "Please try again"));
       });
 
       rzp.open();
-    };
+    }
+
+    // Auto-focus phone field
+    setTimeout(function() {
+      document.getElementById("phone-field").focus();
+    }, 500);
   </script>
 </body>
 </html>`);
 });
-
 // ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
