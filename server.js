@@ -243,7 +243,6 @@ app.get("/", (req, res) => {
 // ------------------------------------------------------
 app.post("/api/auth/google", express.json(), async (req, res) => {
   const { id_token, access_token } = req.body;
-  
 
   try {
     let email, name;
@@ -274,6 +273,25 @@ app.post("/api/auth/google", express.json(), async (req, res) => {
       name = tokenInfo.email || tokenInfo.sub || "unknown";
     } else {
       return res.status(400).json({ error: "Missing Google token" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (!existingUser) {
+      await User.create({
+        name: name || normalizedEmail,
+        email: normalizedEmail,
+        passwordHash: "google_oauth", // sentinel, never used for login
+        createdAt: new Date(),
+      });
+      console.log("✅ New Google user saved to DB:", normalizedEmail);
+    } else {
+      // Keep display name in sync with whatever Google returns
+      if (name && existingUser.name !== name) {
+        await User.updateOne({ email: normalizedEmail }, { $set: { name } });
+      }
+      console.log("✅ Existing Google user logged in:", normalizedEmail);
     }
 
     // Sign JWT for extension to use
