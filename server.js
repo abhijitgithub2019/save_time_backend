@@ -1669,6 +1669,102 @@ app.get("/payment-callback", async (req, res) => {
   res.send("OK");
 });
 
+// ADD THIS before app.listen() in your backend
+
+app.get("/pay", (req, res) => {
+  const { order_id, amount, email, plan } = req.query;
+
+  if (!order_id || !amount || !email) {
+    return res.status(400).send("Missing required parameters.");
+  }
+
+  const callbackBase =
+    "https://save-time-backend.onrender.com/payment-callback";
+
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Secure Payment</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d0d1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .loader { text-align: center; color: rgba(255,255,255,0.6); }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(102,126,234,0.2);
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader p { font-size: 14px; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="loader">
+    <div class="spinner"></div>
+    <p>Opening secure checkout…</p>
+  </div>
+  <script>
+    window.onload = function () {
+      var options = {
+        key: "${process.env.RAZORPAY_KEY_ID}",
+        order_id: "${order_id}",
+        amount: "${amount}",
+        currency: "INR",
+        name: "BlockSocialMedia",
+        description: "Premium Access",
+        prefill: {
+          email: "${email}",
+          contact: "",
+        },
+        theme: { color: "#667eea" },
+        modal: {
+          ondismiss: function () {
+            window.location.href = "${callbackBase}?status=cancelled";
+          },
+          confirm_close: false,
+          escape: true,
+          animation: true,
+        },
+        handler: function (response) {
+          window.location.href =
+            "${callbackBase}" +
+            "?status=paid" +
+            "&razorpay_payment_id=" + encodeURIComponent(response.razorpay_payment_id) +
+            "&razorpay_order_id=" + encodeURIComponent(response.razorpay_order_id) +
+            "&razorpay_signature=" + encodeURIComponent(response.razorpay_signature) +
+            "&email=" + encodeURIComponent("${email}") +
+            "&plan=" + encodeURIComponent("${plan || "monthly"}");
+        },
+      };
+
+      var rzp = new Razorpay(options);
+
+      rzp.on("payment.failed", function (response) {
+        window.location.href =
+          "${callbackBase}?status=failed&error=" +
+          encodeURIComponent(response.error.description || "Payment failed");
+      });
+
+      rzp.open();
+    };
+  </script>
+</body>
+</html>`);
+});
+
 // ------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
