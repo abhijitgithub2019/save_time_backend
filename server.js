@@ -1619,7 +1619,53 @@ app.post("/api/pinlogout", verifyJwt, async (req, res) => {
   }
 });
 
-app.get("/payment-callback", (req, res) => {
+app.get("/payment-callback", async (req, res) => {
+  const {
+    status,
+    razorpay_payment_id,
+    razorpay_order_id,
+    razorpay_signature,
+    email,
+    plan,
+  } = req.query;
+
+  // If payment was successful, verify signature and activate premium
+  if (
+    status === "paid" &&
+    razorpay_payment_id &&
+    razorpay_order_id &&
+    razorpay_signature &&
+    email
+  ) {
+    try {
+      // Verify HMAC signature
+      const expectedSignature = crypto
+        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+        .update(razorpay_order_id + "|" + razorpay_payment_id)
+        .digest("hex");
+
+      if (expectedSignature === razorpay_signature) {
+        const cleanedEmail = email.toLowerCase().trim();
+        const now = new Date();
+        const expiresAt =
+          plan === "yearly"
+            ? new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
+            : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        await PaidUser.findOneAndUpdate(
+          { email: cleanedEmail },
+          { $set: { paidAt: now, expiresAt, amount: 0 } },
+          { upsert: true, new: true }
+        );
+
+        console.log(`✅ Premium activated via /pay callback: ${cleanedEmail}`);
+      }
+    } catch (err) {
+      console.error("❌ Callback verification error:", err);
+    }
+  }
+
+  // Always send OK — WebView detects this URL and handles the rest
   res.send("OK");
 });
 
