@@ -504,7 +504,7 @@ app.post(
 
     const expireInSeconds = 25 * 60; // 25 minutes
     const expireTime = Math.floor(Date.now() / 1000) + expireInSeconds;
-
+    const contact = phone || generateFakeContact();
     console.log(
       `[Link Creation] Calculated Expire Time (UNIX): ${expireTime} (${expireInSeconds} seconds from now)`
     );
@@ -517,23 +517,41 @@ app.post(
       description: "Premium Feature Access",
       customer: {
         email: email,
-        contact: phone || undefined,
+        contact: contact,
+        name: "BlockSocialMedia User",
       },
-      notify: { email: true, sms: false },
-      reminder_enable: true,
+
+      notify: {
+        email: false,
+        sms: false,
+      },
+
+      reminder_enable: false,
+
       callback_url:
         callback_url ||
-        "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
+        "https://save-time-backend.onrender.com/payment-callback",
+
       callback_method: "get",
+
       options: {
         checkout: {
           name: "BlockSocialMedia",
+
           prefill: {
-            contact: phone || generateFakeContact(),
             email: email,
+            contact: contact,
           },
-          hidden: { contact: true, email: true },
-          readonly: { contact: true, email: true },
+
+          readonly: {
+            email: true,
+            contact: true,
+          },
+
+          hidden: {
+            email: true,
+            contact: true,
+          },
         },
       },
     };
