@@ -486,7 +486,7 @@ app.post(
   createPaymentLimiter,
   express.json(),
   async (req, res) => {
-    const { amount, email, callback_url } = req.body;
+    const { amount, email, callback_url, phone } = req.body;
     const amountInPaise = Math.round(amount * 100);
 
     if (!amount || !email) {
@@ -510,6 +510,7 @@ app.post(
       description: "Premium Feature Access",
       customer: {
         email: email,
+        contact: phone || undefined,
       },
       notify: { email: true, sms: false },
       reminder_enable: true,
@@ -520,7 +521,6 @@ app.post(
       options: {
         checkout: {
           name: "BlockSocialMedia", // forces app name in checkout
-          email: email
         },
       },
     };
@@ -676,25 +676,7 @@ app.post(
         const cleanedEmail = email.toLowerCase().trim();
 
         try {
-          if (amount === 1900) {
-            const now = new Date();
-            const expireDate = new Date(
-              now.getTime() + 30 * 24 * 60 * 60 * 1000
-            ); // +30 days
-
-            await PaidUser.findOneAndUpdate(
-              { email: cleanedEmail },
-              {
-                $set: {
-                  paidAt: now,
-                  expiresAt: expireDate,
-                  amount: amount,
-                },
-              },
-              { upsert: true, new: true }
-            );
-            console.log(`✔️ Premium payment saved for: ${cleanedEmail}`);
-          } else if (amount === 2900) {
+          if (amount === 2900) {
             await EmergencyUnlock.create({
               email: cleanedEmail,
               amount: 2900,
@@ -704,6 +686,30 @@ app.post(
               razorpay_link_id: body.payload.payment_link?.entity?.id || null,
             });
             console.log(`✔️ Emergency Unlock saved for: ${cleanedEmail}`);
+          } else if (amount === 1200) {
+            // Android monthly ₹12
+            const now = new Date();
+            const expireDate = new Date(
+              now.getTime() + 30 * 24 * 60 * 60 * 1000
+            );
+            await PaidUser.findOneAndUpdate(
+              { email: cleanedEmail },
+              { $set: { paidAt: now, expiresAt: expireDate, amount: amount } },
+              { upsert: true, new: true }
+            );
+            console.log(`✔️ Monthly premium activated: ${cleanedEmail}`);
+          } else if (amount === 12000) {
+            // Android yearly ₹120
+            const now = new Date();
+            const expireDate = new Date(
+              now.getTime() + 365 * 24 * 60 * 60 * 1000
+            );
+            await PaidUser.findOneAndUpdate(
+              { email: cleanedEmail },
+              { $set: { paidAt: now, expiresAt: expireDate, amount: amount } },
+              { upsert: true, new: true }
+            );
+            console.log(`✔️ Yearly premium activated: ${cleanedEmail}`);
           }
         } catch (dbError) {
           console.error("❌ DB Save Error:", dbError);
