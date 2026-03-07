@@ -486,7 +486,7 @@ app.post(
   createPaymentLimiter,
   express.json(),
   async (req, res) => {
-    const { amount, email } = req.body;
+    const { amount, email, callback_url } = req.body;
     const amountInPaise = Math.round(amount * 100);
 
     if (!amount || !email) {
@@ -514,6 +514,7 @@ app.post(
       notify: { email: true, sms: false },
       reminder_enable: true,
       callback_url:
+        callback_url ||
         "chrome-extension://hokdmlppdlkokmlolddngkcceadflbke/premium.html",
       callback_method: "get",
       options: {
@@ -1609,6 +1610,10 @@ app.post("/api/pinlogout", verifyJwt, async (req, res) => {
     console.error("PIN logout error:", err);
     return res.status(500).json({ error: "Server error" });
   }
+});
+
+app.get("/payment-callback", (req, res) => {
+  res.send("OK");
 });
 
 // ------------------------------------------------------
