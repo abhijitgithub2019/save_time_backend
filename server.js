@@ -48,12 +48,51 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+const AppConfigSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true, index: true },
+    value: { type: mongoose.Schema.Types.Mixed, required: true },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { collection: "app_config" }
+);
+
+const AppConfig = mongoose.model("AppConfig", AppConfigSchema);
+
+// Seed default prices if not already in DB
+async function seedDefaultPrices() {
+  const existing = await AppConfig.findOne({ key: "subscription_plans" });
+  if (!existing) {
+    await AppConfig.create({
+      key: "subscription_plans",
+      value: {
+        monthly: {
+          amountPaise: 1200,
+          displayPrice: "₹12",
+          period: "/month",
+          description: "Billed monthly",
+        },
+        yearly: {
+          amountPaise: 12000,
+          displayPrice: "₹120",
+          period: "/year",
+          description: "Billed yearly",
+        },
+      },
+    });
+    console.log("✅ Default subscription prices seeded to DB");
+  }
+}
+
 // ------------------------------------------------------
 // MongoDB Setup (Persistence Layer)
 // ------------------------------------------------------
 mongoose
   .connect(MONGO_URI)
-  .then(() => console.log("💾 MongoDB Connected"))
+  .then(() => {
+    console.log("💾 MongoDB Connected");
+    seedDefaultPrices(); // ← add this call
+  })
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // ------------------------------------------------------
@@ -125,6 +164,128 @@ const createPaymentLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+app.get("/api/subscription-plans", async (req, res) => {
+  try {
+    const config = await AppConfig.findOne({ key: "subscription_plans" });
+    if (!config) {
+      return res.status(404).json({ error: "Plans not configured" });
+    }
+    return res.json(config.value);
+  } catch (err) {
+    console.error("❌ subscription-plans error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ------------------------------------------------------
+// NEW: Create Razorpay ORDER (native in-app checkout)
+// POST /api/create-order  { amount, currency, email, plan }
+// ------------------------------------------------------
+app.post(
+  "/api/create-order",
+  createPaymentLimiter,
+  express.json(),
+  async (req, res) => {
+    const { amount, currency = "INR", email, plan } = req.body;
+
+    if (!amount || !email) {
+      return res.status(400).json({ error: "Missing amount or email" });
+    }
+
+    try {
+      const order = await razorpay.orders.create({
+        amount: Math.round(amount), // already in paise from client
+        currency,
+        receipt: `receipt_${Date.now()}`,
+        notes: { email, plan: plan || "monthly" },
+      });
+
+      console.log(`✅ Razorpay order created: ${order.id} for ${email}`);
+
+      return res.json({
+        order_id: order.id,
+        amount: order.amount,
+        currency: order.currency,
+      });
+    } catch (err) {
+      console.error("❌ Create order error:", err);
+      return res.status(500).json({ error: "Failed to create Razorpay order" });
+    }
+  }
+);
+
+// ------------------------------------------------------
+// NEW: Verify Razorpay payment + activate premium
+// POST /api/verify-payment
+//   { razorpay_payment_id, razorpay_order_id, razorpay_signature, email }
+// ------------------------------------------------------
+app.post("/api/verify-payment", express.json(), async (req, res) => {
+  const { razorpay_payment_id, razorpay_order_id, razorpay_signature, email } =
+    req.body;
+
+  if (
+    !razorpay_payment_id ||
+    !razorpay_order_id ||
+    !razorpay_signature ||
+    !email
+  ) {
+    return res.status(400).json({ error: "Missing required payment fields" });
+  }
+
+  // ── 1. Verify HMAC signature ──────────────────────────────────────────────
+  const expectedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .update(razorpay_order_id + "|" + razorpay_payment_id)
+    .digest("hex");
+
+  if (expectedSignature !== razorpay_signature) {
+    console.warn("❌ Razorpay signature mismatch for", email);
+    return res.status(400).json({ error: "Invalid payment signature" });
+  }
+
+  // ── 2. Fetch order to read plan from notes ────────────────────────────────
+  let orderDetails;
+  try {
+    orderDetails = await razorpay.orders.fetch(razorpay_order_id);
+  } catch (err) {
+    console.error("❌ Failed to fetch order details:", err);
+    return res.status(500).json({ error: "Could not fetch order details" });
+  }
+
+  const plan = orderDetails.notes?.plan || "monthly";
+  const cleanedEmail = email.toLowerCase().trim();
+
+  // ── 3. Compute expiry based on plan ──────────────────────────────────────
+  const now = new Date();
+  const expiresAt =
+    plan === "yearly"
+      ? new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
+      : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  // ── 4. Upsert PaidUser ────────────────────────────────────────────────────
+  try {
+    await PaidUser.findOneAndUpdate(
+      { email: cleanedEmail },
+      {
+        $set: {
+          paidAt: now,
+          expiresAt,
+          amount: orderDetails.amount,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    console.log(
+      `✅ Premium activated: ${cleanedEmail} | plan: ${plan} | expires: ${expiresAt.toISOString()}`
+    );
+
+    return res.json({ success: true, expiresAt: expiresAt.toISOString() });
+  } catch (dbErr) {
+    console.error("❌ DB error saving premium user:", dbErr);
+    return res.status(500).json({ error: "Failed to save premium status" });
+  }
+});
 // ------------------------------------------------------
 // Schemas / Models
 // ------------------------------------------------------
