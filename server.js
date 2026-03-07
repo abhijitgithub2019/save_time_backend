@@ -1680,17 +1680,15 @@ app.get("/pay", (req, res) => {
     return res.status(400).send("Missing required parameters.");
   }
 
-  const callbackBase =
-    "https://save-time-backend.onrender.com/payment-callback";
   const amountPaise = parseInt(amount);
   const displayAmount = "₹" + (amountPaise / 100).toFixed(0);
   const safePlan = plan || "monthly";
   const safeEmail = String(email);
   const safeOrderId = String(order_id);
   const razorpayKey = process.env.RAZORPAY_KEY_ID;
+  const callbackBase =
+    "https://save-time-backend.onrender.com/payment-callback";
 
-  // We use Razorpay's standard form-based redirect — no modal, no popup.
-  // This works in ANY WebView because it's just a plain HTML form POST.
   res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -1789,6 +1787,8 @@ app.get("/pay", (req, res) => {
     <p id="loading-text">Opening payment…</p>
   </div>
 
+  <!-- KEY CHANGE: Load Razorpay Checkout JS directly (no form POST navigation) -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
     function handlePay() {
       var phone = document.getElementById('f-phone').value.trim();
@@ -1804,37 +1804,53 @@ app.get("/pay", (req, res) => {
       document.getElementById('loading').classList.add('show');
       document.getElementById('loading-text').textContent = 'Opening payment…';
 
-      // Build Razorpay standard checkout form — works in ALL WebViews
-      // No modal, no popup — just a plain HTML form POST redirect
-      var form = document.createElement('form');
-      form.method = 'POST';
-      form.action = 'https://api.razorpay.com/v1/checkout/embedded';
-
-      var fields = {
-        key_id:      '${razorpayKey}',
-        order_id:    '${safeOrderId}',
-        name:        'BlockSocialMedia',
+      // Use Razorpay Standard Checkout JS — opens an in-page overlay,
+      // no navigation away from this page, works in React Native WebView.
+      var options = {
+        key: '${razorpayKey}',
+        order_id: '${safeOrderId}',
+        name: 'BlockSocialMedia',
         description: 'Premium Access',
-        prefill_email:   '${safeEmail}',
-        prefill_contact: phone,
-        theme_color: '#667eea',
-        callback_url: '${callbackBase}?email=${safeEmail}&plan=${safePlan}',
-        cancel_url:   '${callbackBase}?status=cancelled',
+        prefill: {
+          email: '${safeEmail}',
+          contact: phone
+        },
+        theme: { color: '#667eea' },
+        handler: function(response) {
+          // Payment succeeded — redirect WebView to callback URL
+          // so RazorpayWebViewModal.handleNavigationChange() can intercept it
+          document.getElementById('loading-text').textContent = 'Verifying payment…';
+          var callbackUrl = '${callbackBase}'
+            + '?status=paid'
+            + '&razorpay_payment_id=' + encodeURIComponent(response.razorpay_payment_id)
+            + '&razorpay_order_id='   + encodeURIComponent(response.razorpay_order_id)
+            + '&razorpay_signature='  + encodeURIComponent(response.razorpay_signature)
+            + '&email=${safeEmail}'
+            + '&plan=${safePlan}';
+          window.location.href = callbackUrl;
+        },
+        modal: {
+          ondismiss: function() {
+            // User closed Razorpay sheet — re-enable the button
+            document.getElementById('pay-btn').disabled = false;
+            document.getElementById('loading').classList.remove('show');
+          }
+        }
       };
 
-      Object.keys(fields).forEach(function(k) {
-        var input = document.createElement('input');
-        input.type  = 'hidden';
-        input.name  = k;
-        input.value = fields[k];
-        form.appendChild(input);
-      });
-
-      document.body.appendChild(form);
-      form.submit();
+      // Small delay to let the loading overlay render, then open Razorpay
+      setTimeout(function() {
+        document.getElementById('loading').classList.remove('show');
+        var rzp = new Razorpay(options);
+        rzp.on('payment.failed', function(response) {
+          document.getElementById('pay-btn').disabled = false;
+          alert('Payment failed: ' + (response.error.description || 'Please try again.'));
+        });
+        rzp.open();
+      }, 300);
     }
 
-    // Auto-focus phone
+    // Auto-focus phone input
     setTimeout(function() {
       document.getElementById('f-phone').focus();
     }, 400);
