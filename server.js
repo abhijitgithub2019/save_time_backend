@@ -520,7 +520,15 @@ app.post(
       callback_method: "get",
       options: {
         checkout: {
-          name: "BlockSocialMedia", // forces app name in checkout
+          name: "BlockSocialMedia",
+          prefill: {
+            email: email,
+            contact: "9999999999", // dummy — skips the form
+          },
+          readonly: {
+            email: true,
+            contact: true,
+          },
         },
       },
     };
