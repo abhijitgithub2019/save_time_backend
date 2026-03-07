@@ -478,6 +478,13 @@ app.get("/", (req, res) => {
   res.send("Backend is running ✔️");
 });
 
+function generateFakeContact() {
+  const starts = ["6", "7", "8", "9"];
+  const first = starts[Math.floor(Math.random() * starts.length)];
+  const rest = Math.floor(100000000 + Math.random() * 900000000).toString();
+  return first + rest;
+}
+
 // ------------------------------------------------------
 // Payment link creation (Razorpay) - uses express.json() only on route
 // ------------------------------------------------------
@@ -521,12 +528,12 @@ app.post(
       options: {
         checkout: {
           name: "BlockSocialMedia",
-          hidden: {
-            contact: true,
+          prefill: {
+            contact: phone || generateFakeContact(),
+            email: email,
           },
-          readonly: {
-            contact: true,
-          },
+          hidden: { contact: true, email: true },
+          readonly: { contact: true, email: true },
         },
       },
     };
